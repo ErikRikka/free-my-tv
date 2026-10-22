@@ -78,6 +78,7 @@ final class Config {
     static final String VOICE_MODE = "$(prop voice_mode 'live')";
     static final String OPENAI_REALTIME_MODEL = "$(prop openai_realtime_model 'gpt-realtime-2.1')";
     static final String OPENAI_REALTIME_VOICE = "$(prop openai_realtime_voice 'marin')";
+    static final boolean LIVE_MUTE_WHILE_SPEAKING = $( [ "$(prop live_mute_while_speaking false)" = true ] && echo true || echo false );
     static final String ASSISTANT_MODEL = "$(prop assistant_model 'claude-sonnet-5-5')";
     static final String YOUTUBE_CLIENT_ID = "$(prop youtube_client_id '')";
     static final String YOUTUBE_CLIENT_SECRET = "$(prop youtube_client_secret '')";

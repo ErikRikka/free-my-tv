@@ -143,6 +143,7 @@ final class Live {
                 break;
             case "input_audio_buffer.speech_started":   // you started talking: it stops and listens
                 lastHeard = System.currentTimeMillis();
+                if (speaking()) AppLog.w("voice: live interrupted while speaking");
                 interrupted = true;
                 audio.clear();
                 audio.add(FLUSH);
@@ -238,10 +239,11 @@ final class Live {
             while (!closed) {
                 int n = r.read(buf, 0, buf.length);
                 if (n <= 0) continue;
-                // Without echo cancelling, the TV would hear its own voice and interrupt itself: it listens between answers only.
-                boolean deaf = !echoCancel && (speaking() || !audio.isEmpty());
+                // Muted while it speaks: without echo cancelling the TV can hear its own voice and interrupt itself.
+                boolean guard = !echoCancel && Config.LIVE_MUTE_WHILE_SPEAKING;
+                boolean deaf = guard && (speaking() || !audio.isEmpty());
                 if (deaf) lastSpoke = System.currentTimeMillis();
-                boolean tail = !echoCancel && System.currentTimeMillis() - lastSpoke < 400;   // the room's echo
+                boolean tail = guard && System.currentTimeMillis() - lastSpoke < 400;   // the room's echo
                 send(new JSONObject().put("type", "input_audio_buffer.append")
                         .put("audio", Base64.encodeToString(deaf || tail ? quiet : buf, 0, n, Base64.NO_WRAP)));
                 if (!speaking() && audio.isEmpty() && System.currentTimeMillis() - lastHeard > 180_000) {
