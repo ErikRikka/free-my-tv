@@ -84,6 +84,7 @@ final class Live {
             mic.join(1500);
             player.join(1500);
             track.release();
+            save();
         }
     }
 
@@ -138,6 +139,9 @@ final class Live {
             case "response.output_audio.done":   // a little silence pushes the last words out of the track's buffer
                 if (!interrupted) audio.add(new byte[RATE / 3 * 2]);
                 break;
+            case "response.output_audio_transcript.done":
+                said("assistant", e.optString("transcript"));
+                break;
             case "response.output_audio_transcript.delta":
                 answer += e.optString("delta");
                 screen.show("", heard, answer);
@@ -151,6 +155,7 @@ final class Live {
                 screen.show("● Слушаю…", "", "");
                 break;
             case "conversation.item.input_audio_transcription.completed":
+                said("user", e.optString("transcript"));
                 heard = "«" + e.optString("transcript").trim() + "»";
                 log("live heard " + heard);
                 screen.show("", heard, answer);
@@ -193,6 +198,7 @@ final class Live {
                 }
             }
             log(name + " " + args + " -> " + result);
+            said("assistant", "[" + name + " " + args + " → " + result + "]");
             try {
                 send(new JSONObject().put("type", "conversation.item.create").put("item", new JSONObject()
                         .put("type", "function_call_output").put("call_id", id).put("output", result)));
@@ -217,6 +223,52 @@ final class Live {
     /** Whether the TV is still saying something: by the clock, since a track's position stalls on some TVs. */
     private boolean speaking() {
         return System.currentTimeMillis() < playUntil;
+    }
+
+    // MARK: - The conversation in OpenAI's Logs
+
+    private final JSONArray transcript = new JSONArray();
+
+    private synchronized void said(String role, String text) {
+        if (text.trim().isEmpty()) return;
+        try {
+            transcript.put(new JSONObject().put("role", role).put("content", text.trim()));
+        } catch (Exception ignored) {
+        }
+    }
+
+    /**
+     * Keeps the conversation as text in your OpenAI account (platform.openai.com → Logs): a stored response whose input is
+     * what was said, titled by a small model.
+     */
+    private void save() {
+        final JSONArray said;
+        synchronized (this) {
+            if (transcript.length() == 0) return;
+            said = transcript;
+        }
+        new Thread(() -> {
+            try {
+                JSONObject req = new JSONObject().put("model", "gpt-4o-mini").put("store", true).put("max_output_tokens", 30)
+                        .put("metadata", new JSONObject().put("app", "free-my-tv").put("kind", "voice"))
+                        .put("instructions", "Это запись голосового разговора с помощником на телевизоре. Дай ей короткое название, 3-6 слов.")
+                        .put("input", said);
+                java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL("https://api.openai.com/v1/responses").openConnection();
+                c.setConnectTimeout(8000);
+                c.setReadTimeout(30000);
+                c.setRequestMethod("POST");
+                c.setDoOutput(true);
+                c.setRequestProperty("Authorization", "Bearer " + Config.OPENAI_KEY);
+                c.setRequestProperty("content-type", "application/json");
+                try (OutputStream o = c.getOutputStream()) {
+                    o.write(req.toString().getBytes(StandardCharsets.UTF_8));
+                }
+                log("conversation saved to OpenAI Logs: HTTP " + c.getResponseCode() + ", " + said.length() + " lines");
+                c.disconnect();
+            } catch (Exception e) {
+                log("conversation not saved: " + e);
+            }
+        }).start();
     }
 
     // MARK: - Sound
