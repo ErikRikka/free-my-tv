@@ -75,6 +75,9 @@ final class Config {
     static final String OPENAI_MODEL = "$(prop openai_model 'gpt-4o')";
     static final String OPENAI_VOICE = "$(prop openai_voice 'coral')";
     static final String OPENAI_TTS_MODEL = "$(prop openai_tts_model 'gpt-4o-mini-tts')";
+    static final String VOICE_MODE = "$(prop voice_mode 'live')";
+    static final String OPENAI_REALTIME_MODEL = "$(prop openai_realtime_model 'gpt-realtime-2.1')";
+    static final String OPENAI_REALTIME_VOICE = "$(prop openai_realtime_voice 'marin')";
     static final String ASSISTANT_MODEL = "$(prop assistant_model 'claude-sonnet-5-5')";
     static final String YOUTUBE_CLIENT_ID = "$(prop youtube_client_id '')";
     static final String YOUTUBE_CLIENT_SECRET = "$(prop youtube_client_secret '')";

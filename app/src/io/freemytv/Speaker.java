@@ -140,10 +140,15 @@ final class Speaker {
                 if (c.getResponseCode() != 200) throw new IOException("TTS HTTP " + c.getResponseCode());
                 try (InputStream in = c.getInputStream()) {
                     byte[] buf = new byte[4800];   // 100 ms of audio
-                    int n;
-                    while ((n = in.read(buf)) > 0 && !stopped) {
+                    int n, have = 0;
+                    while ((n = in.read(buf, have, buf.length - have)) > 0 && !stopped) {
                         if (!ok) AppLog.w("voice: tts first audio after " + (System.currentTimeMillis() - t0) + " ms (" + Config.OPENAI_VOICE + ")");
-                        chunks.add(java.util.Arrays.copyOf(buf, n));
+                        have += n;
+                        int whole = have & ~1;   // a sample is two bytes: an odd one waits for its pair, or the sound crackles
+                        if (whole == 0) continue;
+                        chunks.add(java.util.Arrays.copyOf(buf, whole));
+                        if (have > whole) buf[0] = buf[whole];
+                        have -= whole;
                         ok = true;
                     }
                 }
@@ -170,20 +175,36 @@ final class Speaker {
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
                 .setAudioFormat(new AudioFormat.Builder().setSampleRate(RATE).setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                         .setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
-                .setBufferSizeInBytes(size * 4).setTransferMode(AudioTrack.MODE_STREAM).build();
+                .setBufferSizeInBytes(Math.max(size * 4, RATE * 2)).setTransferMode(AudioTrack.MODE_STREAM).build();
         track.play();
         try {
             while (!stopped) {
                 BlockingQueue<byte[]> chunks = playlist.poll(500, TimeUnit.MILLISECONDS);
                 if (chunks == null) continue;
+                java.io.ByteArrayOutputStream head = new java.io.ByteArrayOutputStream();
                 byte[] chunk;
                 while (!stopped && (chunk = chunks.poll(20, TimeUnit.SECONDS)) != null && chunk != END) {
-                    track.write(chunk, 0, chunk.length);
-                    written += chunk.length / 2;
+                    if (head != null) {   // 0.25 s in hand before the first sound, so the stream never runs dry mid-word
+                        head.write(chunk, 0, chunk.length);
+                        if (head.size() < RATE / 2) continue;
+                        chunk = head.toByteArray();
+                        head = null;
+                    }
+                    write(chunk);
                 }
+                if (head != null && head.size() > 0 && !stopped) write(head.toByteArray());
                 played++;
             }
         } catch (InterruptedException ignored) {
+        }
+    }
+
+    private void write(byte[] pcm) {
+        for (int off = 0; off < pcm.length && !stopped; ) {
+            int n = track.write(pcm, off, pcm.length - off);
+            if (n <= 0) break;
+            off += n;
+            written += n / 2;
         }
     }
 

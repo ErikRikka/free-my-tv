@@ -37,6 +37,7 @@ final class VoiceSession extends VoiceInteractionSession {
     private TextView status, heard, answer;
     private volatile boolean busy, closing;
     private Speaker speaker;
+    private volatile Live live;
 
     VoiceSession(Context c) {
         super(c);
@@ -78,7 +79,10 @@ final class VoiceSession extends VoiceInteractionSession {
 
     @Override public void onShow(Bundle args, int flags) {
         super.onShow(args, flags);
-        if (busy) return;
+        if (busy) {   // the mic button again: the conversation ends
+            end();
+            return;
+        }
         busy = true;
         closing = false;
         TvTools.left = false;
@@ -90,12 +94,16 @@ final class VoiceSession extends VoiceInteractionSession {
                 return false;
             }
         };
-        speaker = new Speaker(context);
-        show("● Слушаю…", "", "");
+        speaker = live() ? null : new Speaker(context);
+        show(live() ? "Подключаюсь…" : "● Слушаю…", "", "");
         new Thread(this::conversation).start();
     }
 
     private void conversation() {
+        if (live()) {
+            talkLive();
+            return;
+        }
         try {
             boolean first = true;
             int empty = 0;
@@ -144,6 +152,48 @@ final class VoiceSession extends VoiceInteractionSession {
             busy = false;
             ui.postDelayed(this::hide, 1200);
         }
+    }
+
+    private static boolean live() {
+        return Config.VOICE_MODE.equalsIgnoreCase("live") && !Config.OPENAI_KEY.isEmpty();
+    }
+
+    private void talkLive() {
+        try {
+            Live l = new Live(context, this::show);
+            live = l;
+            if (!closing) l.run();
+        } catch (Exception e) {
+            AppLog.w("voice: live " + e);
+            show("Ошибка", String.valueOf(e.getMessage()), "");
+            sleep(4000);
+        } finally {
+            live = null;
+            if (speaker != null) {
+                speaker.release();
+                speaker = null;
+            }
+            busy = false;
+            ui.postDelayed(this::hide, 300);
+        }
+    }
+
+    private void end() {
+        closing = true;
+        Live l = live;
+        if (l != null) l.close();
+        if (speaker != null) speaker.stop();
+        show("", "", "До встречи!");
+        ui.postDelayed(this::hide, 400);
+    }
+
+    @Override public boolean onKeyDown(int keyCode, android.view.KeyEvent event) {
+        if (keyCode == android.view.KeyEvent.KEYCODE_SEARCH || keyCode == android.view.KeyEvent.KEYCODE_VOICE_ASSIST
+                || keyCode == android.view.KeyEvent.KEYCODE_ASSIST) {
+            if (event.getRepeatCount() == 0) end();
+            return true;
+        }
+        return super.onKeyDown(keyCode, event);
     }
 
     /** Asks the brain and speaks each sentence as soon as it is written. */
@@ -261,6 +311,8 @@ final class VoiceSession extends VoiceInteractionSession {
     @Override public void onHide() {
         super.onHide();
         closing = true;
+        Live l = live;
+        if (l != null) l.close();
         if (speaker != null) speaker.stop();
     }
 }

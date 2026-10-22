@@ -79,7 +79,7 @@ final class Brain {
         }
     }
 
-    private static String system() {
+    static String system() {
         return SYSTEM + " Сейчас " + new SimpleDateFormat("EEEE, d MMMM yyyy, HH:mm", new Locale("ru")).format(new Date()) + ".";
     }
 
@@ -92,6 +92,7 @@ final class Brain {
             for (JSONObject m : history) messages.put(m);
             JSONObject req = new JSONObject().put("model", Config.OPENAI_MODEL).put("max_completion_tokens", 500).put("stream", true)
                     .put("messages", messages).put("tools", TvTools.schemas(c)).put("tool_choice", "auto");
+            if (Config.OPENAI_MODEL.matches("(gpt-[5-9]|o\\d).*")) req.put("reasoning_effort", "none");   // thinking models take tools only without it, and answer faster
             HttpURLConnection conn = open("https://api.openai.com/v1/chat/completions");
             conn.setRequestProperty("Authorization", "Bearer " + Config.OPENAI_KEY);
             StringBuilder text = new StringBuilder();
