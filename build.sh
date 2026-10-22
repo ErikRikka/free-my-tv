@@ -73,6 +73,8 @@ final class Config {
     static final String ANTHROPIC_KEY = "$(prop anthropic_key '')";
     static final String OPENAI_KEY = "$(prop openai_key '')";
     static final String OPENAI_MODEL = "$(prop openai_model 'gpt-4o')";
+    static final String OPENAI_VOICE = "$(prop openai_voice 'coral')";
+    static final String OPENAI_TTS_MODEL = "$(prop openai_tts_model 'gpt-4o-mini-tts')";
     static final String ASSISTANT_MODEL = "$(prop assistant_model 'claude-sonnet-5-5')";
     static final String YOUTUBE_CLIENT_ID = "$(prop youtube_client_id '')";
     static final String YOUTUBE_CLIENT_SECRET = "$(prop youtube_client_secret '')";

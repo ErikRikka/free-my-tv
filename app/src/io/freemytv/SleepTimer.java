@@ -34,6 +34,11 @@ public class SleepTimer extends BroadcastReceiver {
         return next;
     }
 
+    /** Starts the timer for that many minutes (0 turns it off), for the voice assistant. */
+    static void startMinutes(Context c, int minutes) {
+        set(c, minutes, minutes == 0 ? 0 : 1);
+    }
+
     private static void set(Context c, int minutes, int index) {
         AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
         PendingIntent pi = PendingIntent.getBroadcast(c, 0, new Intent(c, SleepTimer.class),
