@@ -68,6 +68,9 @@ final class Config {
     static final String SPOTIFY_CLIENT_SECRET = "$(prop spotify_client_secret '')";
     static final String SPOTIFY_REFRESH_TOKEN = "$(prop spotify_refresh_token '')";
     static final String KINOPUB_REFRESH_TOKEN = "$(prop kinopub_refresh_token '')";
+    static final String WHISPER_URL = "$(prop whisper_url '')";
+    static final String ANTHROPIC_KEY = "$(prop anthropic_key '')";
+    static final String ASSISTANT_MODEL = "$(prop assistant_model 'claude-sonnet-5-5')";
     static final String YOUTUBE_CLIENT_ID = "$(prop youtube_client_id '')";
     static final String YOUTUBE_CLIENT_SECRET = "$(prop youtube_client_secret '')";
     static final String YOUTUBE_REFRESH_TOKEN = "$(prop youtube_refresh_token '')";
