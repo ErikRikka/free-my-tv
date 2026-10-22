@@ -66,6 +66,30 @@ final class Symbols {
         canvas.drawBitmap(b, null, RECT, PAINT);
     }
 
+    private static final Map<String, android.graphics.drawable.Drawable> ICONS = new HashMap<>();
+
+    /**
+     * The line icons (Lucide, ISC license) as vectors in res/drawable/ic_<name>.xml (tools/svg_to_vector.py): drawn by
+     * the TV at the exact size, so they stay sharp; a bitmap scaled down showed jagged edges. False when there's none.
+     */
+    static boolean icon(Context c, Canvas canvas, String name, float cx, float cy, float size, int color) {
+        android.graphics.drawable.Drawable d;
+        synchronized (ICONS) {
+            if (!ICONS.containsKey(name)) {
+                int id = c.getResources().getIdentifier("ic_" + name, "drawable", c.getPackageName());
+                ICONS.put(name, id == 0 ? null : c.getDrawable(id).mutate());
+            }
+            d = ICONS.get(name);
+        }
+        if (d == null) return false;
+        synchronized (d) {
+            d.setTint(color);
+            d.setBounds(Math.round(cx - size / 2), Math.round(cy - size / 2), Math.round(cx + size / 2), Math.round(cy + size / 2));
+            d.draw(canvas);
+        }
+        return true;
+    }
+
     /** Weather symbol for an Open-Meteo WMO weather code. */
     static String weather(int code, boolean day) {
         if (code <= 1) return day ? "sunny" : "clear_night";

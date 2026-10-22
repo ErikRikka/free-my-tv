@@ -140,6 +140,9 @@
         </service>
 
         <receiver
+            android:name=".SleepTimer"
+            android:exported="false" />
+        <receiver
             android:name=".HomeReceiver"
             android:exported="false">
             <intent-filter>

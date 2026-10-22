@@ -53,6 +53,26 @@ final class Prefs {
         version++;
     }
 
+    // MARK: - Liked picks
+
+    /** Picks liked on the TV (held OK on a card), newest first: "movie:603", "tv:1396". */
+    static List<String> likes() {
+        List<String> out = new ArrayList<>();
+        if (app == null) return out;
+        for (String s : sp().getString("likes", "").split(",")) if (!s.isEmpty()) out.add(s);
+        return out;
+    }
+
+    /** Likes or unlikes; returns whether it's liked now. */
+    static boolean toggleLike(String key) {
+        List<String> list = likes();
+        boolean now = !list.remove(key);
+        if (now) list.add(0, key);
+        while (list.size() > 30) list.remove(list.size() - 1);
+        put("likes", String.join(",", list));
+        return now;
+    }
+
     // MARK: - Language and units
 
     /** "auto", "pt", "en", "es", "de" or "ru". */

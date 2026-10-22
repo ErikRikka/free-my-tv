@@ -57,8 +57,10 @@ final class HomeApps {
     static final int APP = 0, LIVE_TV = 1, INPUT = 2, ALL_APPS = 3, SETTINGS = 4, ANDROID_SETTINGS = 5;
     /** The "HDMI Inputs" button: opens the bottom drawer on the inputs (the home screen handles it). */
     static final int INPUTS = 7;
+    /** The TV's own picture menu, and the sleep timer (the home screen handles that one). */
+    static final int PICTURE = 8, SLEEP = 9;
     /** Image size of each card (16:9; on screen it shows up to ~330 px wide). */
-    static final int TILE_W = 384, TILE_H = 216;
+    static final int TILE_W = 768, TILE_H = 432;
 
     static final class Item {
         int kind;
@@ -90,6 +92,9 @@ final class HomeApps {
         {"peacock", "Peacock", "com.peacocktv.peacockandroid", "6E55DC", "", "1"},
         {"globoplay", "Globoplay", "com.globo.globotv", "FF5A1F", "tint", "1"},
         {"spotify", "Spotify", "com.spotify.tv.android", "1DB954", "", "1"},
+        {"kinowatch", "KINO.WATCH", "watch.kino", "15B9E9", "", "1"},
+        {"kinopoisk", "Кинопоиск", "ru.kinopoisk.tv", "FF5500", "", "1"},
+        {"redshield", "Red Shield VPN", "com.redshieldvpn.app", "FF4A2A", "", "1"},
     };
     static final int MAX_SHELF = 8;
     /** Live TV apps of some brands (the antenna's channels open through the standard Android request first). */
@@ -377,6 +382,9 @@ final class HomeApps {
                 break;
             case ANDROID_SETTINGS:
                 intent = new Intent(Settings.ACTION_SETTINGS);
+                break;
+            case PICTURE:
+                intent = new Intent(Settings.ACTION_DISPLAY_SETTINGS);
                 break;
             default:
                 return false;

@@ -216,3 +216,18 @@ No accounts, no analytics, no tracking. The app talks to TMDB, Open-Meteo (with 
 ## License
 
 [MIT](LICENSE). Fork it, change it, ship it.
+
+## This fork (Russian TV setup)
+
+Built on [simbasjungles/free-my-tv](https://github.com/simbasjungles/free-my-tv) (MIT). What it adds:
+
+- **tvOS-style home:** the pick's photo fills the screen; title, rating, year, description, a "Watch" button, a pager of dots; a glass capsule with the clock, sleep timer and settings, and an hours panel (three steps of 3 h, then tomorrow).
+- **Per-app picks on the dock:** moving to an app shows its own feed. KINO.WATCH (kino.pub: new and popular movies and shows), Kinopoisk (only what's watchable there now), YouTube (new videos from your subscriptions, one trending in four), Red Shield VPN (squirrel photos). Your place in each feed is remembered; after 30 s idle the feed flips by itself every 10 s.
+- **Taste:** hold OK on a pick to like it; likes seed TMDB recommendations. `favorites=` in `config.properties` does the same.
+- **VPN dot** on the VPN tile, **sleep timer** button, vector line icons (Lucide, ISC), crisp logos on the dock.
+- **After 20 min idle:** a quiet fireplace loop (`fireplace.wav` by martats, Freesound, CC0), 3% of the TV's maximum volume ÷ 6, fades in over 10 s, any key fades it out.
+- **Spotify "now playing"** (optional).
+
+Extra settings in `config.properties` (all optional, see `config.example.properties`): `kinopoisk_key`, `favorites`, `kinopub_refresh_token`, `youtube_*`, `spotify_*`. Get the tokens with `tools/kinopub_token.py`, `tools/youtube_token.py`, `tools/spotify_token.py` (each signs in with a device code and writes the token into `config.properties`, which is never committed).
+
+Third-party material: Lucide icons (ISC), Wikimedia Commons photos fetched at run time (their own licenses), the fireplace recording (CC0). The YouTube, Kinopoisk, KINO.WATCH and Red Shield logos are their owners' trademarks, used only to label their apps on your own TV.

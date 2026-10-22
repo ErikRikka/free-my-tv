@@ -59,6 +59,15 @@ final class Config {
     static final String TEMPERATURE = "$(prop temperature auto)";
     static final boolean DISABLE_ASSISTANT = $ASSIST;
     static final boolean SHOW_CRYPTO = $CRYPTO;
+    static final String KINOPOISK_KEY = "$(prop kinopoisk_key '')";
+    static final String FAVORITES = "$(prop favorites '')";
+    static final String SPOTIFY_CLIENT_ID = "$(prop spotify_client_id '')";
+    static final String SPOTIFY_CLIENT_SECRET = "$(prop spotify_client_secret '')";
+    static final String SPOTIFY_REFRESH_TOKEN = "$(prop spotify_refresh_token '')";
+    static final String KINOPUB_REFRESH_TOKEN = "$(prop kinopub_refresh_token '')";
+    static final String YOUTUBE_CLIENT_ID = "$(prop youtube_client_id '')";
+    static final String YOUTUBE_CLIENT_SECRET = "$(prop youtube_client_secret '')";
+    static final String YOUTUBE_REFRESH_TOKEN = "$(prop youtube_refresh_token '')";
 }
 EOF
 
