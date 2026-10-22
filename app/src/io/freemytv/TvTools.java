@@ -76,6 +76,8 @@ final class TvTools {
                 new JSONObject().put("city", str("Город, если спрашивают не про здесь; иначе пусто"))));
         t.put(fn("remember", "Запомнить надолго факт о собеседнике или его просьбу: имя, вкусы, близких, привычки, планы.",
                 new JSONObject().put("fact", str("Факт короткой фразой от третьего лица, например «Его зовут Эрик»")), "fact"));
+        t.put(fn("recall", "Поискать в долгой памяти старые факты о собеседнике: людей, вкусы, события, договорённости.",
+                new JSONObject().put("query", str("Ключевые слова, например «сестра день рождения» или «любимые фильмы»")), "query"));
         t.put(fn("forget", "Забыть то, что просят забыть.",
                 new JSONObject().put("what", str("Слово или фраза, по которой найти факт; «всё», чтобы очистить всю память")), "what"));
         t.put(fn("web_search", "Поискать в интернете: новости, курсы, спорт, события, расписания, цены, свежие факты. "
@@ -104,6 +106,8 @@ final class TvTools {
                 return a.optString("city").trim().isEmpty() ? weather(c) : weatherIn(a.optString("city").trim());
             case "remember":
                 return Memory.remember(c, a.optString("fact"));
+            case "recall":
+                return Memory.recall(c, a.optString("query"));
             case "forget":
                 return Memory.forget(c, a.optString("what"));
             case "web_search":

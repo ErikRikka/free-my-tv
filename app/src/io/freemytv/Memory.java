@@ -14,12 +14,13 @@ import java.util.Locale;
 
 /**
  * What the assistant remembers between conversations, in a file on the TV: facts about you (it keeps them when you ask,
- * or by itself) and a line about each recent conversation. Goes into its instructions at the start of every conversation.
+ * or by itself) and a line about each recent conversation. The freshest facts go into its instructions at the start of
+ * every conversation; older ones stay in the file, and it looks them up with recall when the talk turns to them.
  */
 final class Memory {
     private Memory() {}
 
-    private static final int FACTS = 60, RECENT = 8;
+    private static final int IN_PROMPT = 200, KEPT = 5000, RECENT = 8;
 
     private static File file(Context c) {
         return new File(c.getFilesDir(), "assistant-memory.json");
@@ -58,7 +59,12 @@ final class Memory {
             return " Пока ты ничего не знаешь о собеседнике. Узнаёшь что-то стоящее (имя, вкусы, близких, планы), сохраняй через remember.";
         }
         StringBuilder s = new StringBuilder(" Твоя память о собеседнике (используй естественно, не пересказывай её целиком):");
-        for (int i = 0; i < facts.length(); i++) s.append("\n- ").append(facts.optString(i));
+        int from = Math.max(0, facts.length() - IN_PROMPT);
+        for (int i = from; i < facts.length(); i++) s.append("\n- ").append(facts.optString(i));
+        if (from > 0) {
+            s.append("\nВ памяти есть ещё ").append(from).append(" более старых фактов: когда разговор касается прошлого, людей, "
+                    + "вкусов или того, что ты не видишь выше, сначала поищи через recall.");
+        }
         if (recent.length() > 0) {
             s.append("\nНедавние разговоры:");
             for (int i = 0; i < recent.length(); i++) s.append("\n- ").append(recent.optString(i));
@@ -74,13 +80,45 @@ final class Memory {
         JSONArray facts = list(m, "facts");
         for (int i = 0; i < facts.length(); i++) if (facts.optString(i).equalsIgnoreCase(f)) return "Это уже есть в памяти.";
         facts.put(f);
-        while (facts.length() > FACTS) facts.remove(0);
+        while (facts.length() > KEPT) facts.remove(0);
         try {
             m.put("facts", facts);
         } catch (Exception ignored) {
         }
         store(c, m);
         return "Запомнил: " + f;
+    }
+
+    /** Finds facts by words in them, best matches first; the found ones become fresh again (back into the instructions). */
+    static synchronized String recall(Context c, String query) {
+        java.util.List<String> words = new java.util.ArrayList<>();
+        for (String w : query.toLowerCase(Locale.ROOT).replace('ё', 'е').split("[^\\p{L}\\p{N}]+")) {
+            if (w.length() >= 3) words.add(w.length() > 5 ? w.substring(0, w.length() - 2) : w);   // a rough stem for Russian endings
+        }
+        JSONObject m = load(c);
+        JSONArray facts = list(m, "facts");
+        java.util.List<int[]> hits = new java.util.ArrayList<>();   // {score, index}
+        for (int i = 0; i < facts.length(); i++) {
+            String f = facts.optString(i).toLowerCase(Locale.ROOT).replace('ё', 'е');
+            int score = 0;
+            for (String w : words) if (f.contains(w)) score++;
+            if (score > 0) hits.add(new int[] {score, i});
+        }
+        if (hits.isEmpty()) return "В памяти ничего про это нет.";
+        java.util.Collections.sort(hits, (x, y) -> x[0] != y[0] ? y[0] - x[0] : y[1] - x[1]);
+        java.util.List<String> found = new java.util.ArrayList<>();
+        for (int k = 0; k < Math.min(12, hits.size()); k++) found.add(facts.optString(hits.get(k)[1]));
+        JSONArray rest = new JSONArray();
+        for (int i = 0; i < facts.length(); i++) if (!found.contains(facts.optString(i))) rest.put(facts.optString(i));
+        for (String f : found) rest.put(f);
+        try {
+            m.put("facts", rest);
+        } catch (Exception ignored) {
+        }
+        store(c, m);
+        StringBuilder s = new StringBuilder("Из памяти:");
+        for (String f : found) s.append("\n- ").append(f);
+        return s.toString();
     }
 
     /** Forgets the facts that mention what, or everything for "всё". */
