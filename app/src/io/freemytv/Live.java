@@ -42,7 +42,7 @@ final class Live {
     private final Context context;
     private final Screen screen;
     private final BlockingQueue<byte[]> audio = new LinkedBlockingQueue<>();
-    private volatile boolean closed, interrupted, leaving, saidBye;
+    private volatile boolean closed, interrupted, leaving, saidBye, micAsleep;
     private volatile long playUntil, lastHeard = System.currentTimeMillis();
     private SSLSocket socket;
     private OutputStream out;
@@ -57,6 +57,7 @@ final class Live {
 
     /** Talks until close(), a goodbye, an app opened, or 3 quiet minutes. */
     void run() throws Exception {
+        log("live start, " + Config.OPENAI_REALTIME_MODEL);
         connect();
         track = new AudioTrack.Builder()
                 .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
@@ -120,7 +121,8 @@ final class Live {
                         .put("input", new JSONObject().put("format", pcm)
                                 .put("turn_detection", new JSONObject().put("type", "semantic_vad").put("eagerness", "high"))
                                 .put("transcription", new JSONObject().put("model", "gpt-4o-mini-transcribe").put("language", "ru")))
-                        .put("output", new JSONObject().put("format", pcm).put("voice", Config.OPENAI_REALTIME_VOICE)))
+                        .put("output", new JSONObject().put("format", pcm).put("voice", Config.OPENAI_REALTIME_VOICE)
+                                .put("speed", Config.OPENAI_VOICE_SPEED)))
                 .put("tools", tools);
     }
 
@@ -142,7 +144,7 @@ final class Live {
                 break;
             case "input_audio_buffer.speech_started":   // you started talking: it stops and listens
                 lastHeard = System.currentTimeMillis();
-                if (speaking()) AppLog.w("voice: live interrupted while speaking");
+                if (speaking()) log("live interrupted while speaking");
                 interrupted = true;
                 audio.clear();
                 audio.add(FLUSH);
@@ -150,7 +152,7 @@ final class Live {
                 break;
             case "conversation.item.input_audio_transcription.completed":
                 heard = "«" + e.optString("transcript").trim() + "»";
-                AppLog.w("voice: live heard " + heard);
+                log("live heard " + heard);
                 screen.show("", heard, answer);
                 break;
             case "response.function_call_arguments.done":
@@ -169,7 +171,7 @@ final class Live {
                 break;
             }
             case "error":
-                AppLog.w("voice: live " + e.optJSONObject("error"));
+                log("live " + e.optJSONObject("error"));
                 break;
             default:
         }
@@ -190,7 +192,7 @@ final class Live {
                     result = "Не получилось: " + ex.getMessage();
                 }
             }
-            AppLog.w("voice: " + name + " " + args + " -> " + result);
+            log(name + " " + args + " -> " + result);
             try {
                 send(new JSONObject().put("type", "conversation.item.create").put("item", new JSONObject()
                         .put("type", "function_call_output").put("call_id", id).put("output", result)));
@@ -201,7 +203,7 @@ final class Live {
                     close();
                 }
             } catch (Exception ex) {
-                AppLog.w("voice: live " + ex);
+                log("live " + ex);
             }
         }).start();
     }
@@ -222,10 +224,47 @@ final class Live {
     private static final int MIC_RATE = 16000;   // the remote's mic only works as a "voice recognition" source, at 16 kHz
 
     private void listen() {
+        long reopened = 0;
         while (!closed) {
             if (!record()) return;
-            AppLog.w("voice: live mic went silent, reopening it");
+            if (System.currentTimeMillis() - reopened > 8000) {   // once right away: sometimes that's enough
+                log("live mic went silent, reopening it");
+                reopened = System.currentTimeMillis();
+                continue;
+            }
+            // The remote has stopped sending sound until its mic button is pressed (VoiceSession then calls wake()).
+            log("live mic asleep, waiting for the mic button");
+            micAsleep = true;
+            screen.show("Микрофон пульта уснул", "", "Нажми кнопку микрофона, чтобы продолжить");
+            synchronized (this) {
+                long until = System.currentTimeMillis() + 180_000;
+                while (micAsleep && !closed && System.currentTimeMillis() < until) {
+                    try {
+                        wait(1000);
+                    } catch (InterruptedException e) {
+                        return;
+                    }
+                }
+            }
+            if (micAsleep) {
+                close();
+                return;
+            }
+            reopened = 0;
+            lastHeard = System.currentTimeMillis();
+            screen.show("● Говорите", "", "");
         }
+    }
+
+    /** Whether the remote's mic has gone to sleep: the mic button then wakes it instead of ending the conversation. */
+    boolean micAsleep() {
+        return micAsleep;
+    }
+
+    synchronized void wake() {
+        log("live mic button: waking the mic");
+        micAsleep = false;
+        notifyAll();
     }
 
     /** Streams the mic until the conversation ends (false) or the remote stops sending sound (true: open it again). */
@@ -239,8 +278,10 @@ final class Live {
             if (AcousticEchoCanceler.isAvailable() && (aec = AcousticEchoCanceler.create(r.getAudioSessionId())) != null) {
                 echoCancel = aec.setEnabled(true) == android.media.audiofx.AudioEffect.SUCCESS;
             }
-            AppLog.w("voice: live mic, echo cancel " + echoCancel);
+            log("live mic, echo cancel " + echoCancel);
             r.startRecording();
+            android.media.AudioDeviceInfo d = r.getRoutedDevice();
+            if (d != null) log("live mic is " + d.getProductName() + " (type " + d.getType() + ")");
             short[] in = new short[MIC_RATE / 10];   // 100 ms
             byte[] up = new byte[RATE / 10 * 2], quiet = new byte[up.length];
             long lastSpoke = 0, levelAt = System.currentTimeMillis(), lastSound = levelAt;
@@ -256,7 +297,7 @@ final class Live {
                 if (peak > 60) lastSound = now;   // a room is never this quiet: the remote has switched its mic off
                 else if (now - lastSound > 3000) return true;
                 if (System.currentTimeMillis() - levelAt > 2000) {   // to tell a silent mic from a quiet room
-                    AppLog.w("voice: live mic level " + (int) loudest);
+                    log("live mic level " + (int) loudest);
                     loudest = 0;
                     levelAt = System.currentTimeMillis();
                 }
@@ -268,12 +309,12 @@ final class Live {
                 send(new JSONObject().put("type", "input_audio_buffer.append")
                         .put("audio", Base64.encodeToString(deaf || tail ? quiet : up, 0, frames * 2, Base64.NO_WRAP)));
                 if (!speaking() && audio.isEmpty() && System.currentTimeMillis() - lastHeard > 180_000) {
-                    AppLog.w("voice: live, 3 quiet minutes");
+                    log("live, 3 quiet minutes");
                     close();
                 }
             }
         } catch (Exception e) {
-            if (!closed) AppLog.w("voice: live mic " + e);
+            if (!closed) log("live mic " + e);
             close();
         } finally {
             r.release();
@@ -426,6 +467,19 @@ final class Live {
         for (int i = 0; i < data.length; i++) f.write(data[i] ^ mask[i & 3]);
         f.writeTo(out);
         out.flush();
+    }
+
+    /** To the log and to voice.log (adb pull /sdcard/Android/data/io.freemytv/files/voice.log): TV logs overflow in minutes. */
+    private void log(String message) {
+        AppLog.w("voice: " + message);
+        try {
+            java.io.File f = new java.io.File(context.getExternalFilesDir(null), "voice.log");
+            if (f.length() > 512_000) f.delete();
+            try (java.io.FileWriter w = new java.io.FileWriter(f, true)) {
+                w.write(new java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.ROOT).format(new java.util.Date()) + " " + message + "\n");
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     private static void sleep(long ms) {

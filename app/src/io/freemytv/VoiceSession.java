@@ -81,8 +81,8 @@ final class VoiceSession extends VoiceInteractionSession {
     @Override public void onShow(Bundle args, int flags) {
         super.onShow(args, flags);
         ui.removeCallbacksAndMessages(null);   // a close still pending from the last conversation would end this one
-        if (busy) {   // the mic button again: the conversation ends
-            end();
+        if (busy) {   // the mic button again: the conversation ends, or wakes the remote's mic
+            micButton();
             return;
         }
         if (System.currentTimeMillis() - endedAt < 1500) {   // the same press that ended it, arriving a second way
@@ -184,6 +184,12 @@ final class VoiceSession extends VoiceInteractionSession {
         }
     }
 
+    private void micButton() {
+        Live l = live;
+        if (l != null && l.micAsleep()) l.wake();
+        else end();
+    }
+
     private void end() {
         closing = true;
         endedAt = System.currentTimeMillis();
@@ -197,7 +203,7 @@ final class VoiceSession extends VoiceInteractionSession {
     @Override public boolean onKeyDown(int keyCode, android.view.KeyEvent event) {
         if (keyCode == android.view.KeyEvent.KEYCODE_SEARCH || keyCode == android.view.KeyEvent.KEYCODE_VOICE_ASSIST
                 || keyCode == android.view.KeyEvent.KEYCODE_ASSIST) {
-            if (event.getRepeatCount() == 0) end();
+            if (event.getRepeatCount() == 0) micButton();
             return true;
         }
         return super.onKeyDown(keyCode, event);
