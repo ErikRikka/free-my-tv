@@ -19,13 +19,15 @@ final class Click {
     private static final int RATE = 48_000;
     private SoundPool pool;
     private int move, open;
+    private boolean moveOwn;
 
     Click(Context c) {
         try {
             pool = new SoundPool.Builder().setMaxStreams(3).setAudioAttributes(new AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()).build();
-            move = pool.load(wav(c, "click-move.wav", 1450f, 0.009f, 0.030f), 1);
+            move = own(c, "click-move.wav");
+            if (move == 0) move = pool.load(wav(c, "click-move.wav", 1450f, 0.009f, 0.030f), 1);
             open = pool.load(wav(c, "click-open.wav", 880f, 0.022f, 0.090f), 1);
         } catch (IOException | RuntimeException e) {
             AppLog.w("click sound unavailable: " + e.getMessage());
@@ -33,8 +35,18 @@ final class Click {
         }
     }
 
+    /** local-assets/<name> (built into the APK, never committed): your own sound for the focus move; 0 when absent. */
+    private int own(Context c, String name) {
+        try (android.content.res.AssetFileDescriptor fd = c.getAssets().openFd(name)) {
+            moveOwn = true;
+            return pool.load(fd, 1);
+        } catch (IOException e) {
+            return 0;
+        }
+    }
+
     void move() {
-        if (pool != null) pool.play(move, 0.14f, 0.14f, 1, 0, 1f);
+        if (pool != null) pool.play(move, moveOwn ? 0.3f : 0.14f, moveOwn ? 0.3f : 0.14f, 1, 0, 1f);
     }
 
     void open() {

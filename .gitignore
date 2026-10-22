@@ -13,6 +13,9 @@ __pycache__/
 # macOS
 .DS_Store
 
+# Sounds and other files with their own licenses, used only on your own TV (see Click.java)
+local-assets/
+
 # Working files of this fork: sound demos and design mockups
 sounds/
 icon-packs.png
