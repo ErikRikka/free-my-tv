@@ -222,6 +222,14 @@ final class Live {
     private static final int MIC_RATE = 16000;   // the remote's mic only works as a "voice recognition" source, at 16 kHz
 
     private void listen() {
+        while (!closed) {
+            if (!record()) return;
+            AppLog.w("voice: live mic went silent, reopening it");
+        }
+    }
+
+    /** Streams the mic until the conversation ends (false) or the remote stops sending sound (true: open it again). */
+    private boolean record() {
         int size = Math.max(AudioRecord.getMinBufferSize(MIC_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT), 8192);
         AudioRecord r = new AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, MIC_RATE, AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT, size * 2);
@@ -235,13 +243,18 @@ final class Live {
             r.startRecording();
             short[] in = new short[MIC_RATE / 10];   // 100 ms
             byte[] up = new byte[RATE / 10 * 2], quiet = new byte[up.length];
-            long lastSpoke = 0, levelAt = System.currentTimeMillis();
+            long lastSpoke = 0, levelAt = System.currentTimeMillis(), lastSound = levelAt;
             double loudest = 0;
             while (!closed) {
                 int n = r.read(in, 0, in.length);
                 if (n <= 0) continue;
                 int frames = upsample(in, n, up);
-                for (int i = 0; i < n; i++) loudest = Math.max(loudest, Math.abs(in[i]));
+                int peak = 0;
+                for (int i = 0; i < n; i++) peak = Math.max(peak, Math.abs(in[i]));
+                loudest = Math.max(loudest, peak);
+                long now = System.currentTimeMillis();
+                if (peak > 60) lastSound = now;   // a room is never this quiet: the remote has switched its mic off
+                else if (now - lastSound > 3000) return true;
                 if (System.currentTimeMillis() - levelAt > 2000) {   // to tell a silent mic from a quiet room
                     AppLog.w("voice: live mic level " + (int) loudest);
                     loudest = 0;
@@ -266,6 +279,7 @@ final class Live {
             r.release();
             if (aec != null) aec.release();
         }
+        return false;
     }
 
     /** 16 kHz to the 24 kHz the Realtime API takes (3 samples for every 2), into little-endian bytes; returns the frames. */
