@@ -1021,6 +1021,52 @@ final class Recs {
         return out;
     }
 
+    /** KINO.WATCH's best match for a title (kino.pub search): {id, title, year}, or null. */
+    JSONObject findKinopub(String title, int year, String kind) throws Exception {
+        if (Config.KINOPUB_REFRESH_TOKEN.trim().isEmpty()) throw new IOException("KINO.WATCH не подключён");
+        String token = kinopubToken();
+        JSONArray items = optItems(token, "/v1/items/search?perpage=12&q=" + URLEncoder.encode(title, "UTF-8"));
+        String want = normalize(title);
+        JSONObject best = null;
+        double bestScore = 0;
+        for (int i = 0; items != null && i < items.length(); i++) {
+            JSONObject o = items.getJSONObject(i);
+            String full = o.optString("title");
+            double score = 0;
+            for (String part : full.split(" / ")) {
+                String p = normalize(part);
+                if (p.equals(want)) score = Math.max(score, 10);
+                else if (p.startsWith(want) || want.startsWith(p)) score = Math.max(score, 6);
+                else if (p.contains(want) || want.contains(p)) score = Math.max(score, 3);
+            }
+            if (year > 0 && o.optInt("year") == year) score += 4;
+            String type = o.optString("type");
+            boolean serial = type.contains("serial") || type.equals("tvshow");
+            if (kind.equals("serial") && serial || kind.equals("movie") && !serial) score += 1.5;
+            score -= i * 0.05;   // the search's own order breaks ties
+            if (score > bestScore) {
+                bestScore = score;
+                best = o;
+            }
+        }
+        if (best == null || bestScore < 2) return null;
+        String shown = best.optString("title");
+        int cut = shown.indexOf(" / ");
+        return new JSONObject().put("id", best.optInt("id")).put("title", cut > 0 ? shown.substring(0, cut) : shown)
+                .put("year", best.optInt("year"));
+    }
+
+    private static String normalize(String s) {
+        return s.toLowerCase(Locale.ROOT).replace('ё', 'е').replaceAll("[^\\p{L}\\p{N}]+", " ").trim();
+    }
+
+    /** The first YouTube video for a search (needs the YouTube sign-in), or null. */
+    String youtubeFirst(String query) throws Exception {
+        if (!youtubeConfigured()) return null;
+        JSONArray items = youtubeGet("/search?part=snippet&type=video&maxResults=1&q=" + URLEncoder.encode(query, "UTF-8")).optJSONArray("items");
+        return items == null || items.length() == 0 ? null : items.getJSONObject(0).getJSONObject("id").optString("videoId", null);
+    }
+
     private JSONArray optItems(String token, String path) throws IOException, org.json.JSONException {
         return kinopub(token, path).optJSONArray("items");
     }
