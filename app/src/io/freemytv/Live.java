@@ -114,7 +114,7 @@ final class Live {
                 .put("parameters", new JSONObject().put("type", "object").put("properties", new JSONObject())));
         JSONObject pcm = new JSONObject().put("type", "audio/pcm").put("rate", RATE);
         return new JSONObject().put("type", "realtime")
-                .put("instructions", Brain.system() + " Это живой голосовой разговор: говори естественно, с интонацией, как "
+                .put("instructions", Brain.system(context) + " Это живой голосовой разговор: говори естественно, с интонацией, как "
                         + "человек, коротко, не повторяй вопрос. Если тебя перебили, не извиняйся, просто слушай.")
                 .put("audio", new JSONObject()
                         .put("input", new JSONObject().put("format", pcm)
@@ -247,9 +247,23 @@ final class Live {
         }
         new Thread(() -> {
             try {
-                JSONObject req = new JSONObject().put("model", "gpt-4o-mini").put("store", true).put("max_output_tokens", 30)
+                JSONObject schema = new JSONObject().put("type", "object").put("additionalProperties", false)
+                        .put("required", new JSONArray().put("title").put("summary").put("new_facts"))
+                        .put("properties", new JSONObject()
+                                .put("title", new JSONObject().put("type", "string"))
+                                .put("summary", new JSONObject().put("type", "string"))
+                                .put("new_facts", new JSONObject().put("type", "array").put("items", new JSONObject().put("type", "string"))));
+                JSONObject req = new JSONObject().put("model", "gpt-5.4-mini").put("store", true)
+                        .put("reasoning", new JSONObject().put("effort", "none"))
                         .put("metadata", new JSONObject().put("app", "free-my-tv").put("kind", "voice"))
-                        .put("instructions", "Это запись голосового разговора с помощником на телевизоре. Дай ей короткое название, 3-6 слов.")
+                        .put("instructions", "Это запись голосового разговора с помощником на телевизоре. Верни: title, название "
+                                + "в 3-6 слов; summary, одно короткое предложение о чём говорили (для памяти помощника); new_facts, "
+                                + "новые долговременные факты о собеседнике и его близких (имя, вкусы, привычки, планы, просьбы на "
+                                + "будущее), каждый короткой фразой от третьего лица, без того, что уже есть в памяти, и без "
+                                + "сиюминутного (погода, открытые фильмы). Нет новых фактов, верни пустой список. Память сейчас:"
+                                + Memory.prompt(context))
+                        .put("text", new JSONObject().put("format", new JSONObject().put("type", "json_schema").put("name", "memo")
+                                .put("strict", true).put("schema", schema)))
                         .put("input", said);
                 java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL("https://api.openai.com/v1/responses").openConnection();
                 c.setConnectTimeout(8000);
@@ -261,7 +275,26 @@ final class Live {
                 try (OutputStream o = c.getOutputStream()) {
                     o.write(req.toString().getBytes(StandardCharsets.UTF_8));
                 }
-                log("conversation saved to OpenAI Logs: HTTP " + c.getResponseCode() + ", " + said.length() + " lines");
+                int code = c.getResponseCode();
+                log("conversation saved to OpenAI Logs: HTTP " + code + ", " + said.length() + " lines");
+                if (code == 200) {
+                    ByteArrayOutputStream body = new ByteArrayOutputStream();
+                    try (InputStream in = c.getInputStream()) {
+                        byte[] buf = new byte[8192];
+                        for (int n; (n = in.read(buf)) > 0; ) body.write(buf, 0, n);
+                    }
+                    JSONArray output = new JSONObject(body.toString("UTF-8")).getJSONArray("output");
+                    for (int i = 0; i < output.length(); i++) {
+                        JSONArray content = output.getJSONObject(i).optJSONArray("content");
+                        for (int j = 0; content != null && j < content.length(); j++) {
+                            String text = content.getJSONObject(j).optString("text");
+                            if (!text.startsWith("{")) continue;
+                            JSONObject memo = new JSONObject(text);
+                            Memory.afterConversation(context, memo.optString("summary"), memo.optJSONArray("new_facts"));
+                            log("memory: " + memo.optString("summary") + " | new facts " + memo.optJSONArray("new_facts"));
+                        }
+                    }
+                }
                 c.disconnect();
             } catch (Exception e) {
                 log("conversation not saved: " + e);

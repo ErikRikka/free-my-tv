@@ -74,6 +74,10 @@ final class TvTools {
                                 .put("description", "louder громче, quieter тише, none если задан percent")), "percent"));
         t.put(fn("weather", "Погода сейчас, на сегодня и на завтра: здесь (Санкт-Петербург) или в любом городе мира.",
                 new JSONObject().put("city", str("Город, если спрашивают не про здесь; иначе пусто"))));
+        t.put(fn("remember", "Запомнить надолго факт о собеседнике или его просьбу: имя, вкусы, близких, привычки, планы.",
+                new JSONObject().put("fact", str("Факт короткой фразой от третьего лица, например «Его зовут Эрик»")), "fact"));
+        t.put(fn("forget", "Забыть то, что просят забыть.",
+                new JSONObject().put("what", str("Слово или фраза, по которой найти факт; «всё», чтобы очистить всю память")), "what"));
         t.put(fn("web_search", "Поискать в интернете: новости, курсы, спорт, события, расписания, цены, свежие факты. "
                         + "Возвращает короткую сводку найденного.",
                 new JSONObject().put("query", str("Что искать, полным вопросом по-русски")), "query"));
@@ -98,6 +102,10 @@ final class TvTools {
                 return volume(c, a.optInt("percent", -1), a.optString("step", "none"));
             case "weather":
                 return a.optString("city").trim().isEmpty() ? weather(c) : weatherIn(a.optString("city").trim());
+            case "remember":
+                return Memory.remember(c, a.optString("fact"));
+            case "forget":
+                return Memory.forget(c, a.optString("what"));
             case "web_search":
                 return search(a.optString("query"));
             case "turn_off_tv":

@@ -57,7 +57,7 @@ final class Brain {
             + "что-то сделать на телевизоре (открыть приложение, включить фильм или видео, поставить таймер сна, изменить "
             + "громкость, выключить телевизор), вызови подходящую функцию и после неё коротко скажи, что сделал. Фильмы ищи по "
             + "русскому названию. Если функция сообщила, что не получилось, честно скажи об этом. Телевизор стоит в "
-            + "Санкт-Петербурге и принадлежит одному человеку, имя не называй.";
+            + "Санкт-Петербурге. У тебя есть долгая память: ты помнишь собеседника между разговорами.";
     private static final long FORGET_AFTER = 10 * 60_000L;
     private static final List<JSONObject> history = new ArrayList<>();
     private static long lastAt;
@@ -69,7 +69,7 @@ final class Brain {
         history.add(new JSONObject().put("role", "user").put("content", said));
         trim();
         try {
-            return openai() ? chatgpt(c, sink) : claude(sink);
+            return openai() ? chatgpt(c, sink) : claude(c, sink);
         } catch (Exception e) {
             while (!history.isEmpty() && !"user".equals(history.get(history.size() - 1).optString("role"))) history.remove(history.size() - 1);
             if (!history.isEmpty()) history.remove(history.size() - 1);   // the question that failed
@@ -83,8 +83,8 @@ final class Brain {
         }
     }
 
-    static String system() {
-        return SYSTEM + " Сейчас " + new SimpleDateFormat("EEEE, d MMMM yyyy, HH:mm", new Locale("ru")).format(new Date()) + ".";
+    static String system(Context c) {
+        return SYSTEM + Memory.prompt(c) + " Сейчас " + new SimpleDateFormat("EEEE, d MMMM yyyy, HH:mm", new Locale("ru")).format(new Date()) + ".";
     }
 
     // MARK: - ChatGPT
@@ -92,7 +92,7 @@ final class Brain {
     private static String chatgpt(Context c, Sink sink) throws Exception {
         StringBuilder spoken = new StringBuilder();
         for (int round = 0; round < 4; round++) {
-            JSONArray messages = new JSONArray().put(new JSONObject().put("role", "system").put("content", system()));
+            JSONArray messages = new JSONArray().put(new JSONObject().put("role", "system").put("content", system(c)));
             for (JSONObject m : history) messages.put(m);
             JSONObject req = new JSONObject().put("model", Config.OPENAI_MODEL).put("max_completion_tokens", 500).put("stream", true)
                     .put("messages", messages).put("tools", TvTools.schemas(c)).put("tool_choice", "auto");
@@ -170,13 +170,13 @@ final class Brain {
 
     // MARK: - Claude (text only)
 
-    private static String claude(Sink sink) throws Exception {
+    private static String claude(Context context, Sink sink) throws Exception {
         JSONArray messages = new JSONArray();
         for (JSONObject m : history) {
             String role = m.optString("role"), content = m.optString("content", "");
             if ((role.equals("user") || role.equals("assistant")) && !content.isEmpty() && !m.has("tool_calls")) messages.put(m);
         }
-        JSONObject req = new JSONObject().put("model", Config.ASSISTANT_MODEL).put("max_tokens", 400).put("system", system())
+        JSONObject req = new JSONObject().put("model", Config.ASSISTANT_MODEL).put("max_tokens", 400).put("system", system(context))
                 .put("messages", messages);
         HttpURLConnection c = open("https://api.anthropic.com/v1/messages");
         c.setRequestProperty("x-api-key", Config.ANTHROPIC_KEY);
