@@ -80,13 +80,14 @@ final class VoiceSession extends VoiceInteractionSession {
 
     @Override public void onShow(Bundle args, int flags) {
         super.onShow(args, flags);
+        Live.note(context, "panel shown" + (busy ? ", mic button" : ""));
         ui.removeCallbacksAndMessages(null);   // a close still pending from the last conversation would end this one
         if (busy) {   // the mic button again: the conversation ends, or wakes the remote's mic
             micButton();
             return;
         }
         if (System.currentTimeMillis() - endedAt < 1500) {   // the same press that ended it, arriving a second way
-            hide();
+            finish();
             return;
         }
         busy = true;
@@ -156,7 +157,7 @@ final class VoiceSession extends VoiceInteractionSession {
                 speaker = null;
             }
             busy = false;
-            ui.postDelayed(this::hide, 1200);
+            ui.postDelayed(this::finish, 1200);
         }
     }
 
@@ -170,7 +171,7 @@ final class VoiceSession extends VoiceInteractionSession {
             live = l;
             if (!closing) l.run();
         } catch (Exception e) {
-            AppLog.w("voice: live " + e);
+            Live.note(context, "live failed: " + e);
             show("Ошибка", String.valueOf(e.getMessage()), "");
             sleep(4000);
         } finally {
@@ -180,7 +181,7 @@ final class VoiceSession extends VoiceInteractionSession {
                 speaker = null;
             }
             busy = false;
-            ui.postDelayed(this::hide, 300);
+            ui.postDelayed(this::finish, 300);
         }
     }
 
@@ -197,7 +198,7 @@ final class VoiceSession extends VoiceInteractionSession {
         if (l != null) l.close();
         if (speaker != null) speaker.stop();
         show("", "", "До встречи!");
-        ui.postDelayed(this::hide, 400);
+        ui.postDelayed(this::finish, 400);
     }
 
     @Override public boolean onKeyDown(int keyCode, android.view.KeyEvent event) {
@@ -323,6 +324,7 @@ final class VoiceSession extends VoiceInteractionSession {
 
     @Override public void onHide() {
         super.onHide();
+        Live.note(context, "panel hidden");
         closing = true;
         Live l = live;
         if (l != null) l.close();

@@ -385,7 +385,7 @@ final class Live {
         String host = "api.openai.com";
         socket = (SSLSocket) SSLSocketFactory.getDefault().createSocket();
         socket.connect(new InetSocketAddress(host, 443), 8000);
-        socket.setSoTimeout(0);
+        socket.setSoTimeout(10000);   // until the conversation is set up
         socket.startHandshake();
         out = socket.getOutputStream();
         byte[] nonce = new byte[16];
@@ -402,6 +402,7 @@ final class Live {
             if (b < 0) throw new IOException("live: connection closed");
             head.append((char) b);
         }
+        socket.setSoTimeout(0);
         String status = head.substring(0, head.indexOf("\r\n"));
         if (!status.contains(" 101 ")) {
             throw new IOException("ChatGPT live: " + status + (status.contains(" 401 ") ? " (неверный ключ)" : status.contains(" 403 ")
@@ -471,6 +472,10 @@ final class Live {
 
     /** To the log and to voice.log (adb pull /sdcard/Android/data/io.freemytv/files/voice.log): TV logs overflow in minutes. */
     private void log(String message) {
+        note(context, message);
+    }
+
+    static void note(Context context, String message) {
         AppLog.w("voice: " + message);
         try {
             java.io.File f = new java.io.File(context.getExternalFilesDir(null), "voice.log");
