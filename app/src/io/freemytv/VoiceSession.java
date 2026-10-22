@@ -82,6 +82,7 @@ final class VoiceSession extends VoiceInteractionSession {
         super.onShow(args, flags);
         Live.note(context, "panel shown" + (busy ? ", mic button" : ""));
         ui.removeCallbacksAndMessages(null);   // a close still pending from the last conversation would end this one
+        shownAt = System.currentTimeMillis();
         if (busy) {   // the mic button again: the conversation ends, or wakes the remote's mic
             micButton();
             return;
@@ -322,11 +323,14 @@ final class VoiceSession extends VoiceInteractionSession {
         }
     }
 
-    // Pressing the mic button first closes "system dialogs", this panel among them, and only then shows the session
-    // again: closing waits a moment, and the press (onShow) cancels it, so the conversation goes on.
+    // Pressing the mic button also closes "system dialogs", this panel among them, just before or just after it shows the
+    // session again: a close that comes close to a press is ignored, so the conversation goes on.
     private final Runnable closeForDialogs = this::hide;
 
+    private volatile long shownAt;
+
     @Override public void onCloseSystemDialogs() {
+        if (System.currentTimeMillis() - shownAt < 1500) return;   // it came after the press's onShow
         ui.postDelayed(closeForDialogs, 600);
     }
 
