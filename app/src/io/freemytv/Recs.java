@@ -237,7 +237,7 @@ final class Recs {
     }
 
     private File imageFile(Pick p) {
-        String name = p.backdrop.startsWith("http")   // full addresses can be longer than a file name may be
+        String name = p.backdrop.startsWith("http") || p.backdrop.startsWith("asset:")   // addresses can be longer than a file name may be
                 ? Integer.toHexString(p.backdrop.hashCode()) + "-" + p.backdrop.length() + ".jpg" : p.backdrop.replace("/", "");
         return new File(new File(context.getCacheDir(), "recs"), name);
     }
@@ -734,6 +734,14 @@ final class Recs {
         if (f.exists()) return;
         //noinspection ResultOfMethodCallIgnored
         f.getParentFile().mkdirs();
+        if (p.backdrop.startsWith("asset:")) {   // your own picture from local-assets/pics/, built into the APK
+            try (InputStream in = context.getAssets().open(p.backdrop.substring(6)); FileOutputStream out = new FileOutputStream(f)) {
+                byte[] buffer = new byte[16384];
+                int n;
+                while ((n = in.read(buffer)) > 0) out.write(buffer, 0, n);
+            }
+            return;
+        }
         File part = new File(f.getPath() + ".part");
         HttpURLConnection c = (HttpURLConnection) new URL(p.backdrop.startsWith("http") ? p.backdrop : IMAGES + p.backdrop).openConnection();
         c.setRequestProperty("User-Agent", "FreeMyTV/1.0 (home screen backgrounds)");   // Wikimedia asks for one
@@ -855,7 +863,7 @@ final class Recs {
     private static final String KINOPUB_CLIENT = "client_id=xbmc&client_secret=cgg3gtifu46urtfp2zp1nqtba0k2ezxh";   // Kodi's public client
     private final Map<String, List<Pick>> feeds = new HashMap<>();
     private final ExecutorService feedIo = Executors.newSingleThreadExecutor();
-    private static final int FEEDS_VERSION = 13;
+    private static final int FEEDS_VERSION = 14;
     private volatile long feedsAt, feedsFailedAt;
     private volatile boolean fetchingFeeds, feedsOn;
 
@@ -1225,6 +1233,22 @@ final class Recs {
         for (int i = 0; i < Math.max(a.size(), b.size()); i++) {
             if (i < a.size()) out.add(a.get(i));
             if (i < b.size()) out.add(b.get(i));
+        }
+        // Your own pictures (local-assets/pics/, e.g. funny or generated ones) go in among them, one in every three.
+        try {
+            String[] mine = context.getAssets().list("pics");
+            for (int j = 0; mine != null && j < mine.length; j++) {
+                Pick p = new Pick();
+                p.id = mine[j].hashCode();
+                p.kind = "movie";
+                p.title = "";
+                p.backdrop = "asset:pics/" + mine[j];
+                p.source = NATURE;
+                p.detailed = true;
+                out.add(Math.min(out.size(), 2 + 3 * j), p);
+            }
+        } catch (IOException e) {
+            AppLog.w("own pictures: " + e.getMessage());
         }
         return out;
     }
