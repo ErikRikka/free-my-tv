@@ -20,6 +20,7 @@ final class Whisper {
 
     static String transcribe(String url, byte[] pcm16, int rate) throws IOException {
         if (url.isEmpty()) throw new IOException("whisper_url не задан в config.properties");
+        if (pcm16.length < 8000) return "";   // under 0.25 s: the server rejects such a file
         URL u = new URL(url);
         int port = u.getPort() > 0 ? u.getPort() : 80;
         byte[] wav = wav(pcm16, rate);

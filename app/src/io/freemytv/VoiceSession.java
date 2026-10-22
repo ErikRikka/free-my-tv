@@ -150,7 +150,8 @@ final class VoiceSession extends VoiceInteractionSession {
     private void answerTo(String said) throws Exception {
         show("Думаю…", "«" + said + "»", "");
         final StringBuilder shown = new StringBuilder(), sentence = new StringBuilder();
-        Brain.ask(context, said, delta -> {
+        long t0 = System.currentTimeMillis();
+        String reply = Brain.ask(context, said, delta -> {
             shown.append(delta);
             sentence.append(delta);
             show("", "«" + said + "»", shown.toString());
@@ -161,7 +162,9 @@ final class VoiceSession extends VoiceInteractionSession {
             }
         });
         if (sentence.toString().trim().length() > 0) speaker.say(sentence.toString());
+        AppLog.w("voice: answer (" + (System.currentTimeMillis() - t0) + " ms to write): " + reply);
         speaker.finish();
+        AppLog.w("voice: spoken in " + (System.currentTimeMillis() - t0) + " ms");
     }
 
     /** Index just past the last finished sentence in the text so far (a sentence of at least 10 letters), or 0. */
@@ -232,6 +235,7 @@ final class VoiceSession extends VoiceInteractionSession {
         } finally {
             r.release();
         }
+        if (closing || out.size() < 8000) return null;   // closed meanwhile, or under 0.25 s of sound
         return out.toByteArray();
     }
 

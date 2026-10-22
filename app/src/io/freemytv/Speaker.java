@@ -121,6 +121,7 @@ final class Speaker {
 
     private void fetch(String text, BlockingQueue<byte[]> chunks) {
         boolean ok = false;
+        long t0 = System.currentTimeMillis();
         try {
             JSONObject req = new JSONObject().put("model", Config.OPENAI_TTS_MODEL).put("voice", Config.OPENAI_VOICE).put("input", text)
                     .put("response_format", "pcm")
@@ -141,6 +142,7 @@ final class Speaker {
                     byte[] buf = new byte[4800];   // 100 ms of audio
                     int n;
                     while ((n = in.read(buf)) > 0 && !stopped) {
+                        if (!ok) AppLog.w("voice: tts first audio after " + (System.currentTimeMillis() - t0) + " ms (" + Config.OPENAI_VOICE + ")");
                         chunks.add(java.util.Arrays.copyOf(buf, n));
                         ok = true;
                     }
