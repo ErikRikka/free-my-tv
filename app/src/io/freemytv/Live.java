@@ -326,6 +326,8 @@ final class Live {
         AcousticEchoCanceler aec = null;
         try {
             if (r.getState() != AudioRecord.STATE_INITIALIZED) throw new IllegalStateException("микрофон недоступен");
+            android.media.AudioDeviceInfo usb = usbMic();
+            if (usb != null) r.setPreferredDevice(usb);   // a USB mic hears all the time; the remote's gives 30 s per press
             if (AcousticEchoCanceler.isAvailable() && (aec = AcousticEchoCanceler.create(r.getAudioSessionId())) != null) {
                 echoCancel = aec.setEnabled(true) == android.media.audiofx.AudioEffect.SUCCESS;
             }
@@ -345,20 +347,21 @@ final class Live {
                 for (int i = 0; i < n; i++) peak = Math.max(peak, Math.abs(in[i]));
                 loudest = Math.max(loudest, peak);
                 long now = System.currentTimeMillis();
-                if (peak > 60) lastSound = now;   // a room is never this quiet: the remote has switched its mic off
+                if (peak > 60 || usb != null) lastSound = now;   // a room is never this quiet: the remote has switched its mic off
                 else if (now - lastSound > 3000) return true;
                 if (System.currentTimeMillis() - levelAt > 2000) {   // to tell a silent mic from a quiet room
                     log("live mic level " + (int) loudest);
                     loudest = 0;
                     levelAt = System.currentTimeMillis();
                 }
-                // Muted while it speaks: without echo cancelling the TV can hear its own voice and interrupt itself.
-                boolean guard = !echoCancel && Config.LIVE_MUTE_WHILE_SPEAKING;
-                boolean deaf = guard && (speaking() || !audio.isEmpty());
-                if (deaf) lastSpoke = System.currentTimeMillis();
-                boolean tail = guard && System.currentTimeMillis() - lastSpoke < 400;   // the room's echo
+                boolean deaf;
+                if (echoCancel) deaf = false;
+                else if (Config.LIVE_MUTE_WHILE_SPEAKING) {   // muted while it speaks, and a moment after for the room's echo
+                    if (speaking() || !audio.isEmpty()) lastSpoke = now;
+                    deaf = now - lastSpoke < 400;
+                } else deaf = echo(in, n, now);
                 send(new JSONObject().put("type", "input_audio_buffer.append")
-                        .put("audio", Base64.encodeToString(deaf || tail ? quiet : up, 0, frames * 2, Base64.NO_WRAP)));
+                        .put("audio", Base64.encodeToString(deaf ? quiet : up, 0, frames * 2, Base64.NO_WRAP)));
                 if (!speaking() && audio.isEmpty() && System.currentTimeMillis() - lastHeard > 180_000) {
                     log("live, 3 quiet minutes");
                     close();
@@ -372,6 +375,71 @@ final class Live {
             if (aec != null) aec.release();
         }
         return false;
+    }
+
+    private android.media.AudioDeviceInfo usbMic() {
+        android.media.AudioManager am = (android.media.AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+        for (android.media.AudioDeviceInfo d : am.getDevices(android.media.AudioManager.GET_DEVICES_INPUTS)) {
+            int t = d.getType();
+            if (t == android.media.AudioDeviceInfo.TYPE_USB_DEVICE || t == android.media.AudioDeviceInfo.TYPE_USB_HEADSET) return d;
+        }
+        return null;
+    }
+
+    // MARK: - Echo
+    // No echo canceller on this TV, so a gate: what it plays is known, so is how loud it comes back into the mic (learned
+    // as it talks). While it speaks, the mic goes through only when it's clearly louder than that echo (you talking),
+    // and stays open a moment so your words aren't cut; otherwise OpenAI hears silence and it doesn't interrupt itself.
+
+    private static final int FAR = 512;
+    private final long[] farAt = new long[FAR];
+    private final float[] farLevel = new float[FAR];
+    private int farNext;
+    private double echoGain;
+    private long gateOpenUntil;
+
+    /** Notes how loud each 20 ms of the answer is and when it will be heard. */
+    private void heard(byte[] pcm, int off, int len, long startsAt) {
+        int step = RATE / 50 * 2;
+        for (int i = off; i + 1 < off + len; i += step) {
+            int end = Math.min(off + len, i + step);
+            double e = 0;
+            int k = 0;
+            for (int j = i; j + 1 < end; j += 2, k++) {
+                int v = (short) ((pcm[j] & 0xFF) | (pcm[j + 1] << 8));
+                e += (double) v * v;
+            }
+            synchronized (farAt) {
+                farAt[farNext] = startsAt + (i - off) / 2 * 1000L / RATE;
+                farLevel[farNext] = (float) Math.sqrt(e / Math.max(1, k));
+                farNext = (farNext + 1) % FAR;
+            }
+        }
+    }
+
+    /** The loudest the TV was in the last half second, allowing for the delay through its speakers into the mic. */
+    private double farNow(long now) {
+        double max = 0;
+        synchronized (farAt) {
+            for (int i = 0; i < FAR; i++) if (farAt[i] > now - 500 && farAt[i] < now + 60) max = Math.max(max, farLevel[i]);
+        }
+        return max;
+    }
+
+    /** True when this block of the mic is only the TV's own voice and should be sent as silence. */
+    private boolean echo(short[] in, int n, long now) {
+        double e = 0;
+        for (int i = 0; i < n; i++) e += (double) in[i] * in[i];
+        double mic = Math.sqrt(e / Math.max(1, n)), far = farNow(now);
+        if (far < 150) return false;   // it isn't speaking: everything goes through
+        double r = mic / far;
+        if (echoGain == 0) echoGain = r;
+        else if (r < echoGain * 2) echoGain = Math.max(0.005, echoGain * 0.85 + r * 0.15);   // learns the echo, not your voice
+        if (r > echoGain * 3.2 && mic > 300) {
+            if (now > gateOpenUntil) log(String.format(java.util.Locale.ROOT, "live you over its voice: mic %.0f, %.1f× its echo", mic, r / echoGain));
+            gateOpenUntil = now + 700;
+        }
+        return now > gateOpenUntil;
     }
 
     /** 16 kHz to the 24 kHz the Realtime API takes (3 samples for every 2), into little-endian bytes; returns the frames. */
@@ -424,9 +492,10 @@ final class Live {
         for (int off = 0; off < len && !interrupted; ) {
             int n = track.write(pcm, off, len - off);
             if (n <= 0) break;
+            long now = System.currentTimeMillis(), startsAt = Math.max(playUntil, now);
+            heard(pcm, off, n, startsAt);
             off += n;
-            long now = System.currentTimeMillis();
-            playUntil = Math.max(playUntil, now) + n / 2 * 1000L / RATE;
+            playUntil = startsAt + n / 2 * 1000L / RATE;
         }
     }
 
