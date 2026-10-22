@@ -71,8 +71,6 @@ final class Live {
         player.start();
         mic.start();
         send(new JSONObject().put("type", "session.update").put("session", session()));
-        send(new JSONObject().put("type", "response.create").put("response", new JSONObject()
-                .put("instructions", "Коротко поздоровайся одной живой фразой, без вопросов списком.")));
         screen.show("● Говорите", "", "");
         try {
             read();
@@ -279,8 +277,9 @@ final class Live {
         long reopened = 0;
         while (!closed) {
             if (!record()) return;
-            if (System.currentTimeMillis() - reopened > 8000) {   // once right away: sometimes that's enough
+            if (System.currentTimeMillis() - reopened > 8000) {   // the remote gives 30 s per press; once after a pause, in case it listens again
                 log("live mic went silent, reopening it");
+                sleep(1500);
                 reopened = System.currentTimeMillis();
                 continue;
             }

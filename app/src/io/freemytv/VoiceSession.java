@@ -322,6 +322,14 @@ final class VoiceSession extends VoiceInteractionSession {
         }
     }
 
+    // Pressing the mic button first closes "system dialogs", this panel among them, and only then shows the session
+    // again: closing waits a moment, and the press (onShow) cancels it, so the conversation goes on.
+    private final Runnable closeForDialogs = this::hide;
+
+    @Override public void onCloseSystemDialogs() {
+        ui.postDelayed(closeForDialogs, 600);
+    }
+
     @Override public void onHide() {
         super.onHide();
         Live.note(context, "panel hidden");
