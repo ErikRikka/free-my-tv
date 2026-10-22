@@ -2552,6 +2552,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         return spoken;
     }
 
+    // The assistant asks for the screen's contents when it opens; built from the TalkBack nodes, an item that moved
+    // meanwhile comes back null and Android crashes on it. The assistant doesn't need them.
+    @Override public void onProvideVirtualStructure(android.view.ViewStructure structure) {
+    }
+
     private void a11yItems(List<Integer> out) {
         if (sheetOpen) {
             for (int i = 0; i < others.size(); i++) out.add(a11yId(GRID, i));

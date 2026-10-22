@@ -79,6 +79,7 @@ final class VoiceSession extends VoiceInteractionSession {
 
     @Override public void onShow(Bundle args, int flags) {
         super.onShow(args, flags);
+        ui.removeCallbacksAndMessages(null);   // a close still pending from the last conversation would end this one
         if (busy) {   // the mic button again: the conversation ends
             end();
             return;

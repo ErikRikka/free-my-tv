@@ -44,7 +44,7 @@ final class Live {
     private final Screen screen;
     private final BlockingQueue<byte[]> audio = new LinkedBlockingQueue<>();
     private volatile boolean closed, interrupted, leaving, saidBye;
-    private volatile long written, lastHeard = System.currentTimeMillis();
+    private volatile long playUntil, lastHeard = System.currentTimeMillis();
     private SSLSocket socket;
     private OutputStream out;
     private AudioTrack track;
@@ -64,7 +64,8 @@ final class Live {
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
                 .setAudioFormat(new AudioFormat.Builder().setSampleRate(RATE).setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                         .setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
-                .setBufferSizeInBytes(RATE * 2).setTransferMode(AudioTrack.MODE_STREAM).build();
+.setBufferSizeInBytes(Math.max(AudioTrack.getMinBufferSize(RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT) * 2, RATE / 5 * 2))
+                .setTransferMode(AudioTrack.MODE_STREAM).build();
         track.play();
         Thread player = new Thread(this::play, "live-player"), mic = new Thread(this::listen, "live-mic");
         player.start();
@@ -132,6 +133,9 @@ final class Live {
                 break;
             case "response.output_audio.delta":
                 if (!interrupted) audio.add(Base64.decode(e.optString("delta"), Base64.DEFAULT));
+                break;
+            case "response.output_audio.done":   // a little silence pushes the last words out of the track's buffer
+                if (!interrupted) audio.add(new byte[RATE / 3 * 2]);
                 break;
             case "response.output_audio_transcript.delta":
                 answer += e.optString("delta");
@@ -208,8 +212,9 @@ final class Live {
         while (System.currentTimeMillis() < until && (!audio.isEmpty() || speaking())) sleep(50);
     }
 
+    /** Whether the TV is still saying something: by the clock, since a track's position stalls on some TVs. */
     private boolean speaking() {
-        return track.getPlaybackHeadPosition() < written;
+        return System.currentTimeMillis() < playUntil;
     }
 
     // MARK: - Sound
@@ -270,7 +275,7 @@ final class Live {
                     head.reset();
                     track.pause();
                     track.flush();
-                    written = track.getPlaybackHeadPosition();
+                    playUntil = 0;
                     track.play();
                     continue;
                 }
@@ -292,7 +297,8 @@ final class Live {
             int n = track.write(pcm, off, len - off);
             if (n <= 0) break;
             off += n;
-            written += n / 2;
+            long now = System.currentTimeMillis();
+            playUntil = Math.max(playUntil, now) + n / 2 * 1000L / RATE;
         }
     }
 
