@@ -38,6 +38,7 @@ final class VoiceSession extends VoiceInteractionSession {
     private volatile boolean busy, closing;
     private Speaker speaker;
     private volatile Live live;
+    private volatile long endedAt;
 
     VoiceSession(Context c) {
         super(c);
@@ -82,6 +83,10 @@ final class VoiceSession extends VoiceInteractionSession {
         ui.removeCallbacksAndMessages(null);   // a close still pending from the last conversation would end this one
         if (busy) {   // the mic button again: the conversation ends
             end();
+            return;
+        }
+        if (System.currentTimeMillis() - endedAt < 1500) {   // the same press that ended it, arriving a second way
+            hide();
             return;
         }
         busy = true;
@@ -181,6 +186,7 @@ final class VoiceSession extends VoiceInteractionSession {
 
     private void end() {
         closing = true;
+        endedAt = System.currentTimeMillis();
         Live l = live;
         if (l != null) l.close();
         if (speaker != null) speaker.stop();

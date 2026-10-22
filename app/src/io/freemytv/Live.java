@@ -7,7 +7,6 @@ import android.media.AudioRecord;
 import android.media.AudioTrack;
 import android.media.MediaRecorder;
 import android.media.audiofx.AcousticEchoCanceler;
-import android.media.audiofx.NoiseSuppressor;
 import android.util.Base64;
 
 import org.json.JSONArray;
@@ -220,32 +219,41 @@ final class Live {
 
     // MARK: - Sound
 
+    private static final int MIC_RATE = 16000;   // the remote's mic only works as a "voice recognition" source, at 16 kHz
+
     private void listen() {
-        int size = Math.max(AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT), 9600);
-        AudioRecord r = new AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, RATE, AudioFormat.CHANNEL_IN_MONO,
+        int size = Math.max(AudioRecord.getMinBufferSize(MIC_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT), 8192);
+        AudioRecord r = new AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, MIC_RATE, AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT, size * 2);
         AcousticEchoCanceler aec = null;
-        NoiseSuppressor ns = null;
         try {
+            if (r.getState() != AudioRecord.STATE_INITIALIZED) throw new IllegalStateException("микрофон недоступен");
             if (AcousticEchoCanceler.isAvailable() && (aec = AcousticEchoCanceler.create(r.getAudioSessionId())) != null) {
                 echoCancel = aec.setEnabled(true) == android.media.audiofx.AudioEffect.SUCCESS;
             }
-            if (NoiseSuppressor.isAvailable() && (ns = NoiseSuppressor.create(r.getAudioSessionId())) != null) ns.setEnabled(true);
             AppLog.w("voice: live mic, echo cancel " + echoCancel);
             r.startRecording();
-            byte[] buf = new byte[RATE / 10 * 2];   // 100 ms
-            byte[] quiet = new byte[buf.length];
-            long lastSpoke = 0;
+            short[] in = new short[MIC_RATE / 10];   // 100 ms
+            byte[] up = new byte[RATE / 10 * 2], quiet = new byte[up.length];
+            long lastSpoke = 0, levelAt = System.currentTimeMillis();
+            double loudest = 0;
             while (!closed) {
-                int n = r.read(buf, 0, buf.length);
+                int n = r.read(in, 0, in.length);
                 if (n <= 0) continue;
+                int frames = upsample(in, n, up);
+                for (int i = 0; i < n; i++) loudest = Math.max(loudest, Math.abs(in[i]));
+                if (System.currentTimeMillis() - levelAt > 2000) {   // to tell a silent mic from a quiet room
+                    AppLog.w("voice: live mic level " + (int) loudest);
+                    loudest = 0;
+                    levelAt = System.currentTimeMillis();
+                }
                 // Muted while it speaks: without echo cancelling the TV can hear its own voice and interrupt itself.
                 boolean guard = !echoCancel && Config.LIVE_MUTE_WHILE_SPEAKING;
                 boolean deaf = guard && (speaking() || !audio.isEmpty());
                 if (deaf) lastSpoke = System.currentTimeMillis();
                 boolean tail = guard && System.currentTimeMillis() - lastSpoke < 400;   // the room's echo
                 send(new JSONObject().put("type", "input_audio_buffer.append")
-                        .put("audio", Base64.encodeToString(deaf || tail ? quiet : buf, 0, n, Base64.NO_WRAP)));
+                        .put("audio", Base64.encodeToString(deaf || tail ? quiet : up, 0, frames * 2, Base64.NO_WRAP)));
                 if (!speaking() && audio.isEmpty() && System.currentTimeMillis() - lastHeard > 180_000) {
                     AppLog.w("voice: live, 3 quiet minutes");
                     close();
@@ -257,8 +265,20 @@ final class Live {
         } finally {
             r.release();
             if (aec != null) aec.release();
-            if (ns != null) ns.release();
         }
+    }
+
+    /** 16 kHz to the 24 kHz the Realtime API takes (3 samples for every 2), into little-endian bytes; returns the frames. */
+    private static int upsample(short[] in, int n, byte[] out) {
+        int frames = n * 3 / 2;
+        for (int i = 0; i < frames; i++) {
+            int a = i * 2 / 3, b = Math.min(a + 1, n - 1);
+            int rem = i * 2 % 3;
+            int v = (in[a] * (3 - rem) + in[b] * rem) / 3;
+            out[2 * i] = (byte) v;
+            out[2 * i + 1] = (byte) (v >> 8);
+        }
+        return frames;
     }
 
     private void play() {
