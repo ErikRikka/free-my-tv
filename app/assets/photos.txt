@@ -1,0 +1,149 @@
+# Wikimedia Commons page ids of the photos shown on the VPN tile (checked by eye: live animals only).
+# Format: group pageid  (group: squirrel or fox). Titles are in the comments.
+squirrel 89831254  # Callospermophilus lateralis near Lake Almanor.jpg
+squirrel 197149805  # Columbian ground squirrel (Urocitellus columbianus) with juvenile
+squirrel 157419736  # European souslik (Spermophilus citellus) Obrovisko.jpg
+squirrel 197022664  # Hollister's chipmunk (Neotamias amoenus ludibundus) Mt Rainier.jp
+squirrel 193014299  # Red-tailed squirrel (Sciurus granatensis chrysuros) Caldas 2.jpg
+squirrel 136453477  # Red-tailed squirrel (Sciurus granatensis chrysuros) male Caldas.j
+squirrel 200927932  # Red squirrel eating a mushroom (80727).jpg
+squirrel 197150803  # Richardson's red squirrel (Tamiasciurus hudsonicus richardsoni) M
+squirrel 58588037  # Sonoma chipmunk at Samuel P. Taylor State Park.jpg
+squirrel 58487635  # Tamias sonomae at Samuel P. Taylor State Park.jpg
+squirrel 7512943  # Tamias striatus CT.jpg
+squirrel 9645363  # Tamiasciurus hudsonicus CT.jpg
+squirrel 196626255  # Uinta ground squirrel (78708).jpg
+squirrel 169586631  # 016 Indian palm squirrel in Keoladeo National Park Photo by Giles
+squirrel 42128971  # Anatolian Ground Squirrel - Spermophilus xanthoprymnus 04.jpg
+squirrel 42129474  # Anatolian Ground Squirrel - Spermophilus xanthoprymnus 06.jpg
+squirrel 34369285  # Chipmunk (by Steven Pavlov).jpg
+squirrel 197149802  # Columbian ground squirrel (Urocitellus columbianus) Banff.jpg
+squirrel 41354321  # Golden-Mantled Ground Squirrel, Mount Rainier, June 2015.jpg
+squirrel 154356083  # Hoary-bellied Himalayan Squirrel Sasatgre Oct24 A7CR 03529.jpg
+squirrel 3169436  # Japanese Squirrel.jpg
+squirrel 196923314  # Least chipmunk in Yellowstone (89312).jpg
+squirrel 77620059  # Neotamias minimus on Stawamus Chief (DSCF7729).jpg
+squirrel 77581156  # Neotamias minimus on the first peak of Stawamus Chief (DSCF7696).
+squirrel 199550057  # Olympic chipmunk (Neotamias amoenus caurinus).jpg
+squirrel 57041215  # Prevost's squirrel (Callosciurus prevostii pluto) 2.jpg
+squirrel 54592355  # Red-legged sun squirrel (Heliosciurus rufobrachium).jpg
+squirrel 54592354  # Red-legged sun squirrel (Heliosciurus rufobrachium) head.jpg
+squirrel 199565209  # Richardson's ground squirrel (Urocitellus richardsonii) Calgary.j
+squirrel 199565207  # Richardson's ground squirrel (Urocitellus richardsonii) Calgary 2
+squirrel 199565208  # Richardson's ground squirrel (Urocitellus richardsonii) Calgary 3
+squirrel 7612660  # Spermophilus parryii (eating mushroom).jpg
+squirrel 196570146  # Squirrel feeding on coral tree flowers.jpg
+squirrel 69586549  # Suslik ártico (Spermophilus parryii), Parque nacional y reserva D
+squirrel 69586550  # Suslik ártico (Spermophilus parryii), Parque nacional y reserva D
+squirrel 69586551  # Suslik ártico (Spermophilus parryii), Parque nacional y reserva D
+squirrel 155327314  # 2024-11-02 Germany, Berlin, Eurasian red squirrel DSC 9347 DxO.jp
+squirrel 110446989  # Dülmen, Hausdülmen, Eichhörnchen -- 2020 -- 2501.jpg
+squirrel 110446993  # Dülmen, Hausdülmen, Eichhörnchen -- 2020 -- 2668.jpg
+squirrel 110446995  # Dülmen, Hausdülmen, Eichhörnchen -- 2021 -- 7869.jpg
+squirrel 42266141  # Ecureuil Roux.jpg
+squirrel 163239400  # Eichhörnchen (April 2025) 1.jpg
+squirrel 163239399  # Eichhörnchen (April 2025) 2.jpg
+squirrel 92397609  # Eichhörnchen (Sciurus vulgaris) Konstantinhügel Wiener Prater 202
+squirrel 92397614  # Eichhörnchen (Sciurus vulgaris) Konstantinhügel Wiener Prater 202
+squirrel 90318084  # European Red squirrel.jpg
+squirrel 151854378  # Red squirrel (21775).jpg
+squirrel 151854383  # Red squirrel (21808).jpg
+squirrel 151854384  # Red squirrel (21813).jpg
+squirrel 151854385  # Red squirrel (21825).jpg
+squirrel 157529079  # Red squirrel (Sciurus vulgaris fuscoater) Meidling.jpg
+squirrel 157529074  # Red squirrel (Sciurus vulgaris fuscoater) black variant Meidling.
+squirrel 157529065  # Red squirrel (Sciurus vulgaris fuscoater) black variant Meidling 
+squirrel 157529069  # Red squirrel (Sciurus vulgaris fuscoater) black variant Meidling 
+squirrel 157529066  # Red squirrel (Sciurus vulgaris fuscoater) black variant Meidling 
+squirrel 7725217  # Sciurus vulgaris (DFdB).jpg
+squirrel 25557781  # Sciurus vulgaris (Madrid, Spain) 06.jpg
+squirrel 146435992  # Glaucomys sabrinus 248041879.jpg
+squirrel 146435987  # Glaucomys sabrinus 248041894.jpg
+squirrel 163612858  # Glaucomys sabrinus 248041903.jpg
+squirrel 122502994  # Petaurista lena 63020726.jpg
+squirrel 116892968  # Petaurista leucogenys 60369499.jpg
+squirrel 116892965  # Petaurista leucogenys 60436826.jpg
+squirrel 153144971  # Petaurista philippensis Kalyan Varma 1.jpg
+squirrel 4134042  # Southern Flying Squirrel-27527-1.jpg
+squirrel 4134055  # Southern Flying Squirrel-27527-3.jpg
+squirrel 98189567  # Southern Flying Squirrel Durham NC.jpg
+squirrel 59706081  # Mammal Red Giant Flying Squirrel Petaurista IMG 7876 01.jpg
+squirrel 59706080  # Mammal Red Giant Flying Squirrel Petaurista IMG 7876 02.jpg
+squirrel 59706078  # Mammal Red Giant Flying Squirrel Petaurista IMG 7876 03.jpg
+squirrel 146501171  # Petaurista elegans 354230544.jpg
+squirrel 146501183  # Petaurista elegans 354230561.jpg
+squirrel 146501181  # Petaurista elegans 354230593.jpg
+squirrel 122502529  # Petaurista hainana 176556072.jpg
+squirrel 15157812  # Petaurista nobilis.jpg
+squirrel 24560831  # Petaurista nobilis (Sikkim, India).jpg
+squirrel 83145306  # Petaurista nobilis 2.jpg
+squirrel 146501756  # Petaurista petaurista 348836749.jpg
+squirrel 146501754  # Petaurista petaurista 348836779.jpg
+squirrel 146501783  # Petaurista petaurista 58609170.jpg
+squirrel 146501894  # Petaurista sybilla 85921983.jpg
+squirrel 28922089  # Pteromys volans (01).jpg
+squirrel 146502927  # Pteromys volans 292232567.jpg
+squirrel 114988383  # Pteromys volans orii.jpg
+squirrel 164132297  # Pteromys volans orii tail.jpg
+squirrel 29811655  # Carolina northern flying squirrel (7651413424).jpg
+squirrel 30781502  # Glaucomys volans Birdfeeder.jpg
+fox 193570112  # Fox Cub1.jpg
+fox 193570116  # Fox Cub - 55315078520.jpg
+fox 108792185  # Fox cub - geograph.org.uk - 2485155.jpg
+fox 24859162  # Fox cub cute fox animal.jpg
+fox 55331829  # Red Fox - Vulpes vulpes (juvenile) - 6979215074.jpg
+fox 123804738  # Fox Cubs (13920064139).jpg
+fox 123804789  # Fox Cubs (13920144670).jpg
+fox 123804740  # Fox Cubs (14083644876).jpg
+fox 123804775  # Fox Cubs (14103498411).jpg
+fox 123804742  # Fox Cubs (14126807283).jpg
+fox 12340251  # Red Fox (Vulpes vulpes) (4).jpg
+fox 5461315  # Red Fox cubs.jpg
+fox 24859252  # San Joaquin kit fox family sit among grasses vulpes macrotis muti
+fox 24859248  # San Joaquin kit foxes.jpg
+fox 415  # Vulpes macrotis mutica with pups.jpg
+fox 194585142  # Arabian Red Fox with Juvenile.jpg
+fox 180904503  # Ezo Red Fox (Vulpes vulpes schrencki), 2024.jpg
+fox 24859168  # Fox vulpes vulpes in grass.jpg
+fox 114970310  # Red Fox (Vulpes vulpes) (4585518123).jpg
+fox 55331827  # Red Fox - Vulpes vulpes (juvenile) - 01.jpg
+fox 55331828  # Red Fox - Vulpes vulpes (juvenile) - 6979215462.jpg
+fox 55331832  # Red Fox - Vulpes vulpes (juvenile) - 6979216600.jpg
+fox 55331831  # Red Fox - Vulpes vulpes (juvenile) - 7125303481.jpg
+fox 196538381  # Red Fox cub - Vulpes vulpes - East Cumbria1.jpg
+fox 95534795  # Red fox (Vulpes vulpes). Siverskiy.jpg
+fox 32095182  # Red fox kit 1 (Vulpes vulpes).jpg
+fox 32095181  # Red fox kit 2 (Vulpes vulpes).jpg
+fox 32095180  # Red fox kit 3 (Vulpes vulpes).jpg
+fox 191485848  # Red fox kits playing Bombay Hook (36455).jpg
+fox 39682124  # Renardeaux (Vulpes vulpes juvenile) (1).jpg
+fox 39682123  # Renardeaux (Vulpes vulpes juvenile) (2).jpg
+fox 34993819  # Rotfuchs Vulpes vulpes.jpg
+fox 7052625  # Two Vulpes vulpes pups.jpg
+fox 124311355  # Vulpes vulpes IMG 5988 (2667923029).jpg
+fox 122535472  # Vulpes vulpes IMG 6001 (2668748518).jpg
+fox 123940206  # Vulpes vulpes arabica 2.jpg
+fox 165072275  # Vulpes vulpes black puppy 2 Naturschutzgebiet Zülowgrabenniederun
+fox 141180276  # Vulpes vulpes daurica 215228152.jpg
+fox 4244746  # Vulpes vulpes pup, Morro Bay CA.jpg
+fox 165072277  # Vulpes vulpes puppy Naturschutzgebiet Zülowgrabenniederung 11.05.
+fox 364  # Vulpes vulpes pups.jpg
+fox 83812973  # Vulpes vulpes ssp fulvus 6568050.jpg
+fox 83812972  # Vulpes vulpes ssp fulvus 6568061.jpg
+fox 19441905  # Vulpes vulpes young.JPG
+fox 124415604  # Young Fox - Vulpes vulpes (52243933679).jpg
+fox 124481192  # Young Fox - Vulpes vulpes (52245061291).jpg
+fox 56872737  # Bengal Fox Pup.jpg
+fox 49822238  # Desert Fox pup playing with its mother.jpg
+fox 24859164  # Fox pup in grass.jpg
+fox 160411739  # Kit Fox Pup near Delta, Utah (26246976403).jpg
+fox 24466236  # Red Fox Pup(s) Morro Bay, CA 28 May 2008.jpg
+fox 2958590  # Red fox pup in a forest of Haute-Normandie.jpg
+fox 48226000  # White Footed Fox pup suckling.jpg
+fox 48225999  # White Footed Fox pup with lizard kill.jpg
+fox 49004314  # Fuchswelpe.jpg
+fox 164597032  # Welpenwelt.jpg
+fox 132962995  # Desert fox pups suckling.jpg
+fox 4656673  # Alopex lagopus cub (summer coat).jpg
+fox 30741208  # Arctic fox cub.JPG
+fox 93304746  # Fennec Fox Cub (8017464015).jpg

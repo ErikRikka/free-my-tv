@@ -849,13 +849,13 @@ final class Recs {
     // MARK: - Each app's own picks: KINO.WATCH (kino.pub: what you're watching, new and hot) and Kinopoisk (its top)
 
     static final String KINOWATCH = "watch.kino", KINOPOISK = "ru.kinopoisk.tv";
-    /** The VPN's tile: squirrel photos (Wikimedia Commons), no text. */
+    /** The VPN's tile: squirrels and fox cubs (Wikimedia Commons photos), no text. */
     static final String NATURE = "nature";
     private static final String KINOPUB = "https://api.service-kp.com";
     private static final String KINOPUB_CLIENT = "client_id=xbmc&client_secret=cgg3gtifu46urtfp2zp1nqtba0k2ezxh";   // Kodi's public client
     private final Map<String, List<Pick>> feeds = new HashMap<>();
     private final ExecutorService feedIo = Executors.newSingleThreadExecutor();
-    private static final int FEEDS_VERSION = 12;
+    private static final int FEEDS_VERSION = 13;
     private volatile long feedsAt, feedsFailedAt;
     private volatile boolean fetchingFeeds, feedsOn;
 
@@ -920,7 +920,7 @@ final class Recs {
         boolean kinowatch = !Config.KINOPUB_REFRESH_TOKEN.trim().isEmpty() && installed(KINOWATCH);
         boolean kinopoisk = !Config.KINOPOISK_KEY.trim().isEmpty() && hasKey(context) && installed(KINOPOISK);
         boolean youtube = youtubeConfigured() && installed(YOUTUBE);
-        boolean nature = !hasFeed(NATURE) || now - cache.getLong("squirrelsAt2", 0) > 24 * 3600_000L;
+        boolean nature = !hasFeed(NATURE) || now - cache.getLong("photosAt", 0) > 24 * 3600_000L;
         if (!kinowatch && !kinopoisk && !youtube && !nature) return;
         fetchingFeeds = true;
         feedIo.execute(() -> {
@@ -934,7 +934,7 @@ final class Recs {
             try {
                 if (nature) {
                     putFeed(NATURE, nature());
-                    cache.edit().putLong("squirrelsAt2", System.currentTimeMillis()).apply();
+                    cache.edit().putLong("photosAt", System.currentTimeMillis()).apply();
                 }
             } catch (Exception e) {
                 AppLog.w("nature: " + e.getMessage());
@@ -1203,42 +1203,39 @@ final class Recs {
     }
 
     /**
-     * Squirrels of every kind, flying squirrels mixed in (one in three): Wikimedia Commons' featured and quality photos
-     * of the squirrel family, wide and at least 2000 px. File names filter out maps, skeletons, old prints and namesakes.
+     * Squirrels (flying ones too) and fox cubs, every other photo: Wikimedia Commons photos picked by eye, listed by page
+     * id in assets/photos.txt (live animals only; a search could bring up a roadkill or a specimen). Wide, 1920 px.
      */
     private List<Pick> nature() throws Exception {
-        String[] squirrels = {"incategory:\"Featured pictures of Sciuridae\"", "incategory:\"Quality images of Sciuridae\"",
-                "incategory:\"Quality images of Sciurus vulgaris\""};
-        String[] flying = {"\"flying squirrel\" filetype:bitmap", "Petaurista filetype:bitmap", "Pteromys volans filetype:bitmap",
-                "Glaucomys filetype:bitmap"};
-        List<Pick> ground = new ArrayList<>(), gliding = new ArrayList<>();
-        java.util.Set<Integer> seen = new java.util.HashSet<>();
-        for (String q : squirrels) commonsSearch(q, ground, seen);
-        for (String q : flying) commonsSearch(q, gliding, seen);
-        java.util.Collections.shuffle(ground);
-        java.util.Collections.shuffle(gliding);
-        AppLog.w("squirrels: " + ground.size() + " + " + gliding.size() + " flying");
+        List<Integer> squirrels = new ArrayList<>(), foxes = new ArrayList<>();
+        try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(
+                context.getAssets().open("photos.txt"), StandardCharsets.UTF_8))) {
+            for (String line; (line = r.readLine()) != null; ) {
+                String[] f = line.split("#")[0].trim().split("\\s+");
+                if (f.length != 2) continue;
+                (f[0].equals("fox") ? foxes : squirrels).add(Integer.parseInt(f[1]));
+            }
+        }
+        java.util.Collections.shuffle(squirrels);
+        java.util.Collections.shuffle(foxes);
+        List<Pick> a = commonsPhotos(squirrels.subList(0, Math.min(25, squirrels.size())));
+        List<Pick> b = commonsPhotos(foxes.subList(0, Math.min(25, foxes.size())));
+        AppLog.w("photos: " + a.size() + " squirrels, " + b.size() + " foxes");
         List<Pick> out = new ArrayList<>();
-        for (int i = 0, g = 0; (i < ground.size() || g < gliding.size()) && out.size() < 40; ) {
-            for (int n = 0; n < 2 && i < ground.size(); n++) out.add(ground.get(i++));
-            if (g < gliding.size()) out.add(gliding.get(g++));
+        for (int i = 0; i < Math.max(a.size(), b.size()); i++) {
+            if (i < a.size()) out.add(a.get(i));
+            if (i < b.size()) out.add(b.get(i));
         }
         return out;
     }
 
-    private static final java.util.regex.Pattern SQUIRREL = java.util.regex.Pattern.compile(
-            "(?i)squirrel|sciurus|eichh|cureuil|ratufa|callosciurus|tamiasciurus|funambulus|pteromys|glaucomys|petaurista"
-            + "|spermophilus|urocitellus|callospermophilus|tamias|chipmunk");
-    private static final java.util.regex.Pattern NOT_A_PHOTO = java.util.regex.Pattern.compile(
-            "(?i)cercopithecus|map|print|skeleton|skull|cranium|crâne|schädel|bone|teeth|tooth|mandible|specimen|naturalis"
-            + "|dead|dropping|urine|uriin|nest|pesa|bulletin|baseball|box|museum|stamp"
-            + "|drawing|illustration|marmot|marmota|\\.(tif|png|svg)$");
-
-    private void commonsSearch(String query, List<Pick> out, java.util.Set<Integer> seen) {
-        try {
+    private List<Pick> commonsPhotos(List<Integer> ids) throws Exception {
+        List<Pick> out = new ArrayList<>();
+        for (int from = 0; from < ids.size(); from += 50) {
+            StringBuilder list = new StringBuilder();
+            for (int i = from; i < Math.min(ids.size(), from + 50); i++) list.append(i == from ? "" : "|").append(ids.get(i));
             HttpURLConnection c = (HttpURLConnection) new URL("https://commons.wikimedia.org/w/api.php?action=query&format=json"
-                    + "&generator=search&gsrnamespace=6&gsrlimit=50&gsrsearch=" + URLEncoder.encode(query, "UTF-8")
-                    + "&prop=imageinfo&iiprop=size%7Curl&iiurlwidth=1920").openConnection();
+                    + "&prop=imageinfo&iiprop=url&iiurlwidth=1920&pageids=" + URLEncoder.encode(list.toString(), "UTF-8")).openConnection();
             c.setConnectTimeout(8000);
             c.setReadTimeout(15000);
             c.setRequestProperty("User-Agent", "FreeMyTV/1.0 (home screen backgrounds)");
@@ -1252,14 +1249,9 @@ final class Recs {
             }
             for (java.util.Iterator<String> it = pages == null ? null : pages.keys(); it != null && it.hasNext(); ) {
                 JSONObject page = pages.getJSONObject(it.next());
-                String title = page.optString("title");
                 JSONArray info = page.optJSONArray("imageinfo");
-                if (info == null || info.length() == 0 || !SQUIRREL.matcher(title).find() || NOT_A_PHOTO.matcher(title).find()) continue;
-                JSONObject ii = info.getJSONObject(0);
-                int w = ii.optInt("width"), h = ii.optInt("height");
-                String url = ii.optString("thumburl", "");
-                if (url.isEmpty() || w < 2000 || h == 0 || w < h * 1.25f || w > h * 2.2f) continue;   // wide and sharp enough
-                if (!seen.add(page.optInt("pageid"))) continue;
+                String url = info == null || info.length() == 0 ? "" : info.getJSONObject(0).optString("thumburl", "");
+                if (url.isEmpty()) continue;
                 Pick p = new Pick();
                 p.id = page.optInt("pageid");
                 p.kind = "movie";
@@ -1269,9 +1261,9 @@ final class Recs {
                 p.detailed = true;
                 out.add(p);
             }
-        } catch (Exception e) {
-            AppLog.w("commons \"" + query + "\": " + e.getMessage());
         }
+        java.util.Collections.shuffle(out);
+        return out;
     }
 
     /** "3 h ago", "2 days ago" (in the TV's language). */

@@ -46,7 +46,7 @@ final class Click {
     }
 
     void move() {
-        if (pool != null) pool.play(move, moveOwn ? 0.3f : 0.14f, moveOwn ? 0.3f : 0.14f, 1, 0, 1f);
+        if (pool != null) pool.play(move, moveOwn ? 0.15f : 0.14f, moveOwn ? 0.15f : 0.14f, 1, 0, 1f);
     }
 
     void open() {
