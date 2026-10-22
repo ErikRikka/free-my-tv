@@ -72,7 +72,11 @@ final class TvTools {
                 new JSONObject().put("percent", integer("Уровень 0-100, либо -1 если используется step"))
                         .put("step", new JSONObject().put("type", "string").put("enum", new JSONArray().put("louder").put("quieter").put("none"))
                                 .put("description", "louder громче, quieter тише, none если задан percent")), "percent"));
-        t.put(fn("weather", "Узнать погоду сейчас, на сегодня и на завтра.", new JSONObject()));
+        t.put(fn("weather", "Погода сейчас, на сегодня и на завтра: здесь (Санкт-Петербург) или в любом городе мира.",
+                new JSONObject().put("city", str("Город, если спрашивают не про здесь; иначе пусто"))));
+        t.put(fn("web_search", "Поискать в интернете: новости, курсы, спорт, события, расписания, цены, свежие факты. "
+                        + "Возвращает короткую сводку найденного.",
+                new JSONObject().put("query", str("Что искать, полным вопросом по-русски")), "query"));
         t.put(fn("turn_off_tv", "Выключить телевизор (режим ожидания).", new JSONObject()));
         return t;
     }
@@ -93,7 +97,9 @@ final class TvTools {
             case "set_volume":
                 return volume(c, a.optInt("percent", -1), a.optString("step", "none"));
             case "weather":
-                return weather(c);
+                return a.optString("city").trim().isEmpty() ? weather(c) : weatherIn(a.optString("city").trim());
+            case "web_search":
+                return search(a.optString("query"));
             case "turn_off_tv":
                 try (Adb adb = Adb.connect(c, 8_000, null)) {
                     adb.shell("input keyevent KEYCODE_SLEEP");
@@ -180,6 +186,79 @@ final class TvTools {
         else if (step.equals("quieter")) target = Math.max(0, now - Math.max(1, max / 10));
         am.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0);
         return target == 0 ? "Звук выключен." : "Громкость " + Math.round(100f * target / max) + " процентов.";
+    }
+
+    private static JSONObject getJson(String url) throws Exception {
+        java.net.HttpURLConnection h = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+        h.setConnectTimeout(8000);
+        h.setReadTimeout(15000);
+        try (java.io.InputStream in = h.getInputStream()) {
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n);
+            return new JSONObject(out.toString("UTF-8"));
+        } finally {
+            h.disconnect();
+        }
+    }
+
+    /** Any city in the world, from Open-Meteo (no key needed). */
+    private static String weatherIn(String city) throws Exception {
+        JSONArray found = getJson("https://geocoding-api.open-meteo.com/v1/search?count=1&language=ru&name=" + Uri.encode(city))
+                .optJSONArray("results");
+        if (found == null || found.length() == 0) return "Не нашёл город «" + city + "».";
+        JSONObject place = found.getJSONObject(0);
+        JSONObject w = getJson(String.format(Locale.ROOT, "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f"
+                + "&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min,weather_code"
+                + "&timezone=auto&forecast_days=2", place.getDouble("latitude"), place.getDouble("longitude")));
+        JSONObject now = w.getJSONObject("current"), daily = w.getJSONObject("daily");
+        JSONArray max = daily.getJSONArray("temperature_2m_max"), min = daily.getJSONArray("temperature_2m_min"),
+                code = daily.getJSONArray("weather_code");
+        String where = place.optString("name") + (place.has("country") ? ", " + place.optString("country") : "");
+        return where + ": сейчас " + HomeData.degrees(now.getDouble("temperature_2m")) + ", "
+                + HomeData.condition(now.getInt("weather_code"), now.optInt("is_day", 1) == 1) + ". Сегодня от "
+                + HomeData.degrees(min.getDouble(0)) + " до " + HomeData.degrees(max.getDouble(0)) + ". Завтра от "
+                + HomeData.degrees(min.getDouble(1)) + " до " + HomeData.degrees(max.getDouble(1)) + ", "
+                + HomeData.condition(code.getInt(1), true) + ". Местное время " + now.optString("time").replaceFirst(".*T", "") + ".";
+    }
+
+    /** The web, through OpenAI's own search (a small model reads the pages and sums them up for speaking). */
+    private static String search(String query) throws Exception {
+        if (query.trim().isEmpty()) return "Пустой запрос.";
+        JSONObject req = new JSONObject().put("model", "gpt-5.4-mini").put("reasoning", new JSONObject().put("effort", "none"))
+                .put("tools", new JSONArray().put(new JSONObject().put("type", "web_search").put("user_location", new JSONObject()
+                        .put("type", "approximate").put("country", "RU").put("city", "Saint Petersburg"))))
+                .put("instructions", "Найди ответ в интернете и перескажи его по-русски для голосового помощника: 2-5 коротких "
+                        + "предложений, только факты, с датами, если важны, без ссылок и markdown. В конце коротко назови источник.")
+                .put("input", query);
+        java.net.HttpURLConnection h = (java.net.HttpURLConnection) new java.net.URL("https://api.openai.com/v1/responses").openConnection();
+        h.setConnectTimeout(8000);
+        h.setReadTimeout(40000);
+        h.setRequestMethod("POST");
+        h.setDoOutput(true);
+        h.setRequestProperty("Authorization", "Bearer " + Config.OPENAI_KEY);
+        h.setRequestProperty("content-type", "application/json");
+        try {
+            try (java.io.OutputStream o = h.getOutputStream()) {
+                o.write(req.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            if (h.getResponseCode() != 200) return "Поиск не ответил (HTTP " + h.getResponseCode() + ").";
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            try (java.io.InputStream in = h.getInputStream()) {
+                byte[] buf = new byte[8192];
+                for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n);
+            }
+            JSONArray output = new JSONObject(out.toString("UTF-8")).getJSONArray("output");
+            StringBuilder text = new StringBuilder();
+            for (int i = 0; i < output.length(); i++) {
+                JSONArray content = output.getJSONObject(i).optJSONArray("content");
+                for (int j = 0; content != null && j < content.length(); j++) text.append(content.getJSONObject(j).optString("text"));
+            }
+            String answer = text.toString().replaceAll("\\(?\\[([^\\]]*)\\]\\([^)]*\\)\\)?", "").replaceAll("\\s+", " ").trim();
+            return answer.isEmpty() ? "Ничего не нашёл." : answer;
+        } finally {
+            h.disconnect();
+        }
     }
 
     private static String weather(Context c) {
