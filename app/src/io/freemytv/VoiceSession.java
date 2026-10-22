@@ -23,8 +23,8 @@ import java.util.Locale;
 
 /**
  * The assistant: the remote's mic button opens this session. It records your voice (stops by itself when you pause),
- * sends it to a whisper.cpp server on your computer (config.properties "whisper_url"), shows what it heard and, with an
- * "anthropic_key", the answer from Claude, spoken aloud.
+ * sends it to a whisper.cpp server on your computer (config.properties "whisper_url"), shows what it heard and, with a
+ * key (see Brain), the answer from ChatGPT or Claude, spoken aloud.
  */
 final class VoiceSession extends VoiceInteractionSession {
     private static final int RATE = 16000;
@@ -107,13 +107,13 @@ final class VoiceSession extends VoiceInteractionSession {
                 finishLater(3000);
                 return;
             }
-            show(Config.ANTHROPIC_KEY.isEmpty() ? "" : "Думаю…", "«" + said + "»", "");
-            if (Config.ANTHROPIC_KEY.isEmpty()) {
-                show("Ключ Claude не задан (anthropic_key в config.properties)", "«" + said + "»", "");
+            show(Brain.key().isEmpty() ? "" : "Думаю…", "«" + said + "»", "");
+            if (Brain.key().isEmpty()) {
+                show("Ключ " + Brain.name() + " не задан (" + (Brain.openai() ? "openai_key" : "anthropic_key") + " в config.properties)", "«" + said + "»", "");
                 finishLater(8000);
                 return;
             }
-            String reply = Claude.ask(said);
+            String reply = Brain.ask(said);
             show("", "«" + said + "»", reply);
             speak(reply);
             finishLater(Math.min(30000, 6000 + reply.length() * 70L));
