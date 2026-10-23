@@ -98,36 +98,104 @@ final class Reels {
         return new float[] {m.widthPixels / 2f, m.heightPixels / 2f};
     }
 
-    // Touches go through the TV's own ADB (the shell's `input`, as from a computer): this TV accepts a service's gestures
-    // and then drops them, having no touch screen. About half a second each, on a thread of their own.
+    // Touches go through TouchServer, a small program of ours the TV's own ADB starts once (this TV takes a service's
+    // gestures and then drops them, having no touch screen); `input` through ADB if it can't start. On a thread of their own.
     private static final java.util.concurrent.ExecutorService TOUCH = java.util.concurrent.Executors.newSingleThreadExecutor();
+    private static android.net.LocalSocket touch;
+    private static java.io.Writer touchOut;
+    private static boolean fresh;
     private static Adb adb;
 
     private static void input(Context c, String command) {
         Context app = c.getApplicationContext();
         TOUCH.execute(() -> {
-            for (int attempt = 0; attempt < 2; attempt++) {
-                try {
-                    if (adb == null) adb = Adb.connect(app, 0, null);
-                    adb.shell(command);
-                    return;
-                } catch (Exception e) {
-                    AppLog.w("reels: " + command + ": " + e.getMessage());
-                    if (adb != null) adb.close();
-                    adb = null;
-                }
+            try {
+                if (touchOut == null) openTouch(app);
+                touchOut.write(command + "\n");
+                touchOut.flush();
+                return;
+            } catch (Exception e) {
+                AppLog.w("reels: touch server: " + e.getMessage());
+                closeTouch();
             }
+            shell(app, "input " + command);
         });
+    }
+
+    /** Connects to TouchServer, starting it the first time (and again once per run of this process, after an update). */
+    private static void openTouch(Context app) throws Exception {
+        if (!fresh) {
+            fresh = true;
+            try {
+                connectTouch();
+                touchOut.write("quit\n");   // the one left from an older version
+                touchOut.flush();
+                closeTouch();
+                Thread.sleep(150);
+            } catch (Exception ignored) {
+                closeTouch();
+            }
+        } else {
+            try {
+                connectTouch();
+                return;
+            } catch (Exception ignored) {
+                closeTouch();
+            }
+        }
+        String apk = app.getApplicationInfo().sourceDir;
+        shell(app, "CLASSPATH=" + apk + " setsid nohup app_process /system/bin " + TouchServer.class.getName() + " "
+                + android.os.Process.myUid() + " >/dev/null 2>&1 &");
+        for (int i = 0; i < 20; i++) {
+            Thread.sleep(150);
+            try {
+                connectTouch();
+                AppLog.w("reels: touch server up");
+                return;
+            } catch (Exception e) {
+                closeTouch();
+            }
+        }
+        throw new java.io.IOException("didn't start");
+    }
+
+    private static void connectTouch() throws java.io.IOException {
+        touch = new android.net.LocalSocket();
+        touch.connect(new android.net.LocalSocketAddress(TouchServer.SOCKET));
+        touchOut = new java.io.OutputStreamWriter(touch.getOutputStream());
+    }
+
+    private static void closeTouch() {
+        try {
+            if (touch != null) touch.close();
+        } catch (Exception ignored) {
+        }
+        touch = null;
+        touchOut = null;
+    }
+
+    private static void shell(Context app, String command) {
+        for (int attempt = 0; attempt < 2; attempt++) {
+            try {
+                if (adb == null) adb = Adb.connect(app, 0, null);
+                adb.shell(command);
+                return;
+            } catch (Exception e) {
+                AppLog.w("reels: " + command + ": " + e.getMessage());
+                if (adb != null) adb.close();
+                adb = null;
+            }
+        }
     }
 
     private static void swipe(AccessibilityService s, boolean next) {
         DisplayMetrics m = s.getResources().getDisplayMetrics();
         int cx = m.widthPixels / 2, low = Math.round(m.heightPixels * 0.75f), high = Math.round(m.heightPixels * 0.25f);
-        input(s, "input swipe " + cx + " " + (next ? low : high) + " " + cx + " " + (next ? high : low) + " 200");
+        input(s, "swipe " + cx + " " + (next ? low : high) + " " + cx + " " + (next ? high : low) + " 140");
     }
 
     private static void tap(AccessibilityService s, float tx, float ty) {
-        input(s, "input tap " + Math.round(tx) + " " + Math.round(ty));
+        input(s, "tap " + Math.round(tx) + " " + Math.round(ty));
     }
 
     // MARK: - The pointer
