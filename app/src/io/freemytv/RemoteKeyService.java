@@ -14,7 +14,7 @@ public class RemoteKeyService extends AccessibilityService {
     }
 
     @Override public void onAccessibilityEvent(AccessibilityEvent event) {
-        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) Reels.windowChanged(event.getPackageName());
+        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) Reels.windowChanged(this, event.getPackageName(), event.getClassName());
     }
 
     @Override public void onInterrupt() {}
