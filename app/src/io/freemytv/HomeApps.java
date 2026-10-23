@@ -163,6 +163,10 @@ final class HomeApps {
     /** The shelf's packages in order: the user's list (Settings > Shelf), or the built-in one. */
     static List<String> shelfPackages(Context c) {
         List<String> custom = Prefs.shelf();
+        if (custom != null && Prefs.addOnce("instagram", custom, "com.instagram.android", "com.google.android.youtube.tv",
+                launchIntent(c.getPackageManager(), "com.instagram.android") != null)) {
+            custom = Prefs.shelf();
+        }
         if (custom != null) return custom;
         List<String> out = new ArrayList<>();
         PackageManager pm = c.getPackageManager();

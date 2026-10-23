@@ -140,6 +140,21 @@ final class Prefs {
         put("shelf", sb.toString());
     }
 
+    /**
+     * Puts a newly supported app on a shelf the person has already arranged, once, after another one (or at the end):
+     * their own list never picks up new apps by itself. False when there was nothing to do.
+     */
+    static boolean addOnce(String tag, List<String> shelf, String pkg, String after, boolean installed) {
+        if (!installed || sp().getBoolean("added_" + tag, false)) return false;
+        put("added_" + tag, true);
+        if (shelf.contains(pkg)) return false;
+        List<String> out = new ArrayList<>(shelf);
+        int at = out.indexOf(after);
+        out.add(at >= 0 ? at + 1 : out.size(), pkg);
+        setShelf(out);
+        return true;
+    }
+
     // MARK: - Remote buttons
 
     private static String defaultApp(int keyCode) {
