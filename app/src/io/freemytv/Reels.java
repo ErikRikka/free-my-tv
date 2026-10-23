@@ -190,8 +190,9 @@ final class Reels {
 
     private static void swipe(AccessibilityService s, boolean next) {
         DisplayMetrics m = s.getResources().getDisplayMetrics();
-        int cx = m.widthPixels / 2, low = Math.round(m.heightPixels * 0.75f), high = Math.round(m.heightPixels * 0.25f);
-        input(s, "swipe " + cx + " " + (next ? low : high) + " " + cx + " " + (next ? high : low) + " 140");
+        // Two thirds of the screen, quickly: it turns the page only past half of it or with a real flick.
+        int cx = m.widthPixels / 2, low = Math.round(m.heightPixels * 0.85f), high = Math.round(m.heightPixels * 0.18f);
+        input(s, "swipe " + cx + " " + (next ? low : high) + " " + cx + " " + (next ? high : low) + " 160");
     }
 
     private static void tap(AccessibilityService s, float tx, float ty) {
