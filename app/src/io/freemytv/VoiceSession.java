@@ -102,6 +102,7 @@ final class VoiceSession extends VoiceInteractionSession {
                 return false;
             }
         };
+        duck(true);
         speaker = live() ? null : new Speaker(context);
         show(live() ? "Подключаюсь…" : "● Слушаю…", "", "");
         new Thread(this::conversation).start();
@@ -334,8 +335,34 @@ final class VoiceSession extends VoiceInteractionSession {
         ui.postDelayed(closeForDialogs, 600);
     }
 
+    // While it's open, everything else the TV plays (a film, YouTube) goes quiet in the background: the system lowers it for
+    // as long as the assistant holds the sound (transient focus that may duck), and brings it back after.
+    private android.media.AudioFocusRequest focus;
+
+    private void duck(boolean on) {
+        android.media.AudioManager am = (android.media.AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+        if (on && focus == null) {
+            focus = new android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                    .setAudioAttributes(new android.media.AudioAttributes.Builder()
+                            .setUsage(android.media.AudioAttributes.USAGE_ASSISTANT)
+                            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                    .setOnAudioFocusChangeListener(change -> { }).build();
+            Live.note(context, "other sound ducked: " + (am.requestAudioFocus(focus) == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED));
+        } else if (!on && focus != null) {
+            am.abandonAudioFocusRequest(focus);
+            focus = null;
+            Live.note(context, "other sound back");
+        }
+    }
+
+    @Override public void onDestroy() {
+        duck(false);
+        super.onDestroy();
+    }
+
     @Override public void onHide() {
         super.onHide();
+        duck(false);
         Live.note(context, "panel hidden");
         closing = true;
         Live l = live;
