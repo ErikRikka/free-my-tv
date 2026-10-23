@@ -29,6 +29,7 @@ final class TvTools {
 
     private static final String[][] NAMES = {
             {"com.google.android.youtube.tv", "YouTube", "ютуб, youtube, ю туб"},
+            {"com.instagram.android", "Instagram", "инстаграм, инста, рилсы, reels"},
             {"watch.kino", "KINO.WATCH", "киновотч, кино воч, кинопаб, kino.pub, kinopub"},
             {"ru.kinopoisk.tv", "Кинопоиск", "kinopoisk, кинопоиск"},
             {"com.redshieldvpn.app", "Red Shield VPN", "впн, vpn, ред шилд"},

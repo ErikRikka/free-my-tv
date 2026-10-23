@@ -10,10 +10,12 @@ import android.view.accessibility.AccessibilityEvent;
  */
 public class RemoteKeyService extends AccessibilityService {
     @Override protected boolean onKeyEvent(KeyEvent event) {
-        return RemoteKeys.onKey(this, event);
+        return RemoteKeys.onKey(this, event) || Reels.onKey(this, event);
     }
 
-    @Override public void onAccessibilityEvent(AccessibilityEvent event) {}
+    @Override public void onAccessibilityEvent(AccessibilityEvent event) {
+        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) Reels.windowChanged(event.getPackageName());
+    }
 
     @Override public void onInterrupt() {}
 }
