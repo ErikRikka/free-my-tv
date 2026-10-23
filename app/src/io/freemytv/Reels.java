@@ -1,11 +1,9 @@
 package io.freemytv;
 
 import android.accessibilityservice.AccessibilityService;
-import android.accessibilityservice.GestureDescription;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
-import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.util.DisplayMetrics;
 import android.view.Gravity;
@@ -80,24 +78,37 @@ final class Reels {
         return new float[] {m.widthPixels / 2f, m.heightPixels / 2f};
     }
 
+    // Touches go through the TV's own ADB (the shell's `input`, as from a computer): this TV accepts a service's gestures
+    // and then drops them, having no touch screen. About half a second each, on a thread of their own.
+    private static final java.util.concurrent.ExecutorService TOUCH = java.util.concurrent.Executors.newSingleThreadExecutor();
+    private static Adb adb;
+
+    private static void input(Context c, String command) {
+        Context app = c.getApplicationContext();
+        TOUCH.execute(() -> {
+            for (int attempt = 0; attempt < 2; attempt++) {
+                try {
+                    if (adb == null) adb = Adb.connect(app, 0, null);
+                    adb.shell(command);
+                    return;
+                } catch (Exception e) {
+                    AppLog.w("reels: " + command + ": " + e.getMessage());
+                    if (adb != null) adb.close();
+                    adb = null;
+                }
+            }
+        });
+    }
+
     private static void swipe(AccessibilityService s, boolean next) {
         DisplayMetrics m = s.getResources().getDisplayMetrics();
-        float cx = m.widthPixels / 2f, low = m.heightPixels * 0.75f, high = m.heightPixels * 0.25f;
-        Path p = new Path();
-        p.moveTo(cx, next ? low : high);
-        p.lineTo(cx, next ? high : low);
-        AppLog.w("reels: swipe " + (next ? "up" : "down") + " sent " + s.dispatchGesture(new GestureDescription.Builder()
-                .addStroke(new GestureDescription.StrokeDescription(p, 0, 220)).build(), null, null));
+        int cx = m.widthPixels / 2, low = Math.round(m.heightPixels * 0.75f), high = Math.round(m.heightPixels * 0.25f);
+        input(s, "input swipe " + cx + " " + (next ? low : high) + " " + cx + " " + (next ? high : low) + " 200");
     }
 
     private static void tap(AccessibilityService s, float tx, float ty, int times) {
-        GestureDescription.Builder g = new GestureDescription.Builder();
-        for (int i = 0; i < times; i++) {
-            Path p = new Path();
-            p.moveTo(tx, ty);
-            g.addStroke(new GestureDescription.StrokeDescription(p, i * 140L, 40));
-        }
-        AppLog.w("reels: tap at " + (int) tx + "," + (int) ty + " sent " + s.dispatchGesture(g.build(), null, null));
+        String one = "input tap " + Math.round(tx) + " " + Math.round(ty);
+        input(s, times == 1 ? one : one + " & sleep 0.12; " + one + "; wait");   // a double tap: the two close together
     }
 
     // MARK: - The pointer
