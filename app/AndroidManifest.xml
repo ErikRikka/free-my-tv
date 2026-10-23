@@ -16,6 +16,7 @@
     <queries>
         <package android:name="com.netflix.ninja" />
         <package android:name="com.google.android.youtube.tv" />
+        <package android:name="com.instagram.android" />
         <package android:name="com.amazon.amazonvideo.livingroom" />
         <package android:name="com.disney.disneyplus" />
         <package android:name="com.wbd.stream" />

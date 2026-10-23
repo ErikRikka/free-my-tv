@@ -83,8 +83,8 @@ final class Live {
             close();
             audio.add(FLUSH);
             mic.join(1500);
-            player.join(1500);
-            track.release();
+            player.join(3000);
+            if (!player.isAlive()) track.release();
             log("live tokens: in audio " + tokens[0] + ", in text " + tokens[1] + " (cached " + tokens[2] + "), out audio "
                     + tokens[3] + ", out text " + tokens[4]);
             save();
@@ -516,6 +516,13 @@ final class Live {
 
     private void play() {
         ByteArrayOutputStream head = new ByteArrayOutputStream();
+        try {
+            playLoop(head);
+        } catch (IllegalStateException e) {   // the track was released as the conversation ended
+        }
+    }
+
+    private void playLoop(ByteArrayOutputStream head) {
         try {
             while (!closed || !audio.isEmpty()) {
                 byte[] chunk = audio.poll(200, TimeUnit.MILLISECONDS);
