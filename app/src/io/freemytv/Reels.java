@@ -15,9 +15,9 @@ import android.widget.Toast;
 /**
  * Instagram's phone app on the TV, driven by the remote. It only knows fingers, so while it's in front the remote's keys
  * become touches, in one of two ways:
- * - Reels: Down the next reel, Up the one before, OK pause, Right like (a double tap).
+ * - Reels: Down the next reel, Up the one before, OK pause, Right like, Left back to the pointer (on the tabs).
  * - Cursor (to sign in, for dialogs and the rest): the arrows move a pointer, OK taps under it, keyboard keys included.
- * Holding OK switches between the two, and the choice stays. Back is always Back.
+ * Clicking its Reels tab with the pointer switches to Reels; holding OK switches either way. Back is always Back.
  */
 final class Reels {
     private Reels() {}
@@ -36,7 +36,7 @@ final class Reels {
         String p = pkg.toString();
         if (p.contains("inputmethod") || p.equals("com.android.systemui")) return;   // the keyboard or a toast over the app
         if (p.equals(s.getPackageName()) && "android.view.View".equals(String.valueOf(cls))) return;   // our own pointer
-        if (!p.equals(front)) AppLog.w("reels: in front " + p + " " + cls);
+        if (!p.equals(front)) AppLog.w("reels: in front " + p);
         front = p;
         showPointer(s, INSTAGRAM.equals(p) && !reels);
     }
@@ -54,8 +54,16 @@ final class Reels {
                 Toast.makeText(s, reels ? "Пульт листает рилзы (держи OK — курсор)" : "Курсор: стрелки двигают, OK нажимает (держи OK — рилзы)",
                         Toast.LENGTH_LONG).show();
             } else if (!down && !held) {
-                if (reels) tap(s, center(s)[0], center(s)[1], 1);
-                else tap(s, x, y, 1);
+                if (reels) {
+                    tap(s, center(s)[0], center(s)[1]);
+                } else {
+                    tap(s, x, y);
+                    DisplayMetrics m = s.getResources().getDisplayMetrics();
+                    if (x < m.widthPixels * 0.07f && Math.abs(y - m.heightPixels * REELS_TAB) < m.heightPixels * 0.04f) {
+                        reels = true;   // its Reels tab: from now on the arrows go through the reels
+                        showPointer(s, false);
+                    }
+                }
             }
             return true;
         }
@@ -64,14 +72,26 @@ final class Reels {
         if (!arrow) return false;
         if (reels) {
             if (down && e.getRepeatCount() == 0) {
-                if (key == KeyEvent.KEYCODE_DPAD_RIGHT) tap(s, center(s)[0], center(s)[1], 2);
-                else if (key != KeyEvent.KEYCODE_DPAD_LEFT) swipe(s, key == KeyEvent.KEYCODE_DPAD_DOWN);
+                DisplayMetrics m = s.getResources().getDisplayMetrics();
+                if (key == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                    tap(s, m.widthPixels * LIKE_X, m.heightPixels * LIKE_Y);
+                } else if (key == KeyEvent.KEYCODE_DPAD_LEFT) {   // to the tabs on the left, with the pointer on Reels
+                    reels = false;
+                    x = m.widthPixels * 0.033f;
+                    y = m.heightPixels * REELS_TAB;
+                    showPointer(s, true);
+                } else {
+                    swipe(s, key == KeyEvent.KEYCODE_DPAD_DOWN);
+                }
             }
             return true;
         }
         if (down) movePointer(s, key, e.getRepeatCount());
         return true;
     }
+
+    // Where things are in its landscape layout on a 16:9 screen, as parts of the width and height.
+    private static final float REELS_TAB = 0.395f, LIKE_X = 0.691f, LIKE_Y = 0.304f;
 
     private static float[] center(Context c) {
         DisplayMetrics m = c.getResources().getDisplayMetrics();
@@ -106,9 +126,8 @@ final class Reels {
         input(s, "input swipe " + cx + " " + (next ? low : high) + " " + cx + " " + (next ? high : low) + " 200");
     }
 
-    private static void tap(AccessibilityService s, float tx, float ty, int times) {
-        String one = "input tap " + Math.round(tx) + " " + Math.round(ty);
-        input(s, times == 1 ? one : one + " & sleep 0.12; " + one + "; wait");   // a double tap: the two close together
+    private static void tap(AccessibilityService s, float tx, float ty) {
+        input(s, "input tap " + Math.round(tx) + " " + Math.round(ty));
     }
 
     // MARK: - The pointer
