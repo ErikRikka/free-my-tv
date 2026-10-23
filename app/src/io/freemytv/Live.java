@@ -49,6 +49,9 @@ final class Live {
     private AudioTrack track;
     private boolean echoCancel;
     private String heard = "", answer = "";
+    private static final int KEEP_ITEMS = 16;
+    private final java.util.List<String> kept = new java.util.ArrayList<>();
+    private final long[] tokens = new long[5];   // input audio, input text, of them cached, output audio, output text
 
     Live(Context c, Screen s) {
         context = c;
@@ -82,6 +85,8 @@ final class Live {
             mic.join(1500);
             player.join(1500);
             track.release();
+            log("live tokens: in audio " + tokens[0] + ", in text " + tokens[1] + " (cached " + tokens[2] + "), out audio "
+                    + tokens[3] + ", out text " + tokens[4]);
             save();
         }
     }
@@ -161,7 +166,28 @@ final class Live {
             case "response.function_call_arguments.done":
                 call(e.optString("name"), e.optString("arguments"), e.optString("call_id"));
                 break;
+            case "conversation.item.done": {   // only the last turns stay: OpenAI reads the whole conversation again before every answer
+                JSONObject item = e.optJSONObject("item");
+                if (item != null && !item.optString("id").isEmpty() && !kept.contains(item.optString("id"))) kept.add(item.optString("id"));
+                while (kept.size() > KEEP_ITEMS) {
+                    send(new JSONObject().put("type", "conversation.item.delete").put("item_id", kept.remove(0)));
+                }
+                break;
+            }
             case "response.done": {   // after the answer that follows an app opening, the panel goes
+                JSONObject usage = e.optJSONObject("response") != null ? e.getJSONObject("response").optJSONObject("usage") : null;
+                if (usage != null) {
+                    JSONObject in = usage.optJSONObject("input_token_details"), out = usage.optJSONObject("output_token_details");
+                    if (in != null) {
+                        tokens[0] += in.optInt("audio_tokens");
+                        tokens[1] += in.optInt("text_tokens");
+                        tokens[2] += in.optInt("cached_tokens");
+                    }
+                    if (out != null) {
+                        tokens[3] += out.optInt("audio_tokens");
+                        tokens[4] += out.optInt("text_tokens");
+                    }
+                }
                 JSONArray output = e.optJSONObject("response") != null ? e.getJSONObject("response").optJSONArray("output") : null;
                 boolean calls = false;
                 for (int i = 0; output != null && i < output.length(); i++) {

@@ -238,7 +238,7 @@ final class TvTools {
     private static String search(String query) throws Exception {
         if (query.trim().isEmpty()) return "Пустой запрос.";
         JSONObject req = new JSONObject().put("model", "gpt-5.4-mini").put("reasoning", new JSONObject().put("effort", "none"))
-                .put("tools", new JSONArray().put(new JSONObject().put("type", "web_search").put("user_location", new JSONObject()
+                .put("tools", new JSONArray().put(new JSONObject().put("type", "web_search").put("search_context_size", "low").put("user_location", new JSONObject()
                         .put("type", "approximate").put("country", "RU").put("city", "Saint Petersburg"))))
                 .put("instructions", "Найди ответ в интернете и перескажи его по-русски для голосового помощника: 2-5 коротких "
                         + "предложений, только факты, с датами, если важны, без ссылок и markdown. В конце коротко назови источник.")
