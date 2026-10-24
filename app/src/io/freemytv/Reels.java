@@ -90,8 +90,11 @@ final class Reels {
         int key = e.getKeyCode();
         boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
         if (key == KeyEvent.KEYCODE_DPAD_CENTER || key == KeyEvent.KEYCODE_ENTER) {
+            // Held: the other way of driving it. TCL's remote sends no repeats while a key is held, so it's also
+            // told by how long passed between press and release.
+            boolean longPress = (down && e.getRepeatCount() > 0) || (!down && e.getEventTime() - e.getDownTime() > 600);
             if (down && e.getRepeatCount() == 0) held = false;
-            else if (down && !held) {   // held: the other way of driving it
+            else if (longPress && !held) {
                 held = true;
                 reels = !reels;
                 AppLog.w("reels: held OK, " + (reels ? "scrolling" : "pointer"));
