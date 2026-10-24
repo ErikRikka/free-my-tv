@@ -18,7 +18,8 @@ import android.webkit.WebViewClient;
  * Instagram's Reels on the TV, through its website. The phone apps play reels with the TV's VP9 decoder, which turns many
  * of them into smears; here the page is told the TV can't play VP9, AV1 or HEVC, so Instagram sends H.264, which it plays
  * well. The remote works as on any TV app: Up and Down go through the reels, OK pauses, Back leaves. Not signed in, it
- * opens on the sign-in page, where Up and Down go from field to button and OK presses (or, on a field, opens the keyboard).
+ * opens on the sign-in page; off the reels the arrows move a pointer and OK taps under it (fields, buttons, the
+ * "I'm not a robot" box).
  */
 public class ReelsActivity extends Activity {
     /** Its place on the shelf, which holds packages: a name no app has (HomeApps.launchIntent knows it). */
@@ -47,17 +48,12 @@ public class ReelsActivity extends Activity {
             + "var n=vs[i+dir];if(n){n.scrollIntoView({block:'center',behavior:'smooth'});return;}"
             + "var s=document.scrollingElement;(c[1]?c[1].closest('main')||s:s);window.scrollBy({top:dir*innerHeight,behavior:'smooth'});"
             + "var e=document.querySelectorAll('[style*=\"scroll-snap\"],main div');for(var k=0;k<e.length;k++){var el=e[k];if(el.scrollHeight>el.clientHeight+50&&getComputedStyle(el).overflowY!=='visible'){el.scrollBy({top:dir*el.clientHeight,behavior:'smooth'});break;}}};"
-            // Off the reels (signing in): Up and Down walk the fields and buttons, with a ring that shows where you are.
-            + "var st=document.createElement('style');st.textContent=':focus{outline:3px solid #4f8cff!important;outline-offset:3px!important}';"
-            + "(document.head||document.documentElement).appendChild(st);"
-            + "window.fmtvFocus=function(dir){var l=[].filter.call(document.querySelectorAll('input:not([type=hidden]),button,[role=button],a[href]'),"
-            + "function(e){var r=e.getBoundingClientRect();return r.width>0&&r.height>0&&!e.disabled;});if(!l.length)return;"
-            + "var i=l.indexOf(document.activeElement),n=l[i<0?0:Math.max(0,Math.min(l.length-1,i+dir))];n.focus();n.scrollIntoView({block:'center'});};"
-            + "window.fmtvClick=function(){var a=document.activeElement;if(a&&a!==document.body)a.click();else fmtvFocus(1);};"
             + "window.fmtvToggle=function(){var v=current()[1];if(!v)return;v.muted=false;if(v.paused)v.play();else v.pause();};"
             + "})();";
 
     private WebView web;
+    private View pointer;
+    private float px = -1, py = -1;
     private volatile boolean typing;
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -99,7 +95,26 @@ public class ReelsActivity extends Activity {
             }
         });
         web.setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
-        setContentView(web);
+        android.widget.FrameLayout root = new android.widget.FrameLayout(this);
+        root.addView(web);
+        pointer = new View(this) {   // off the reels (signing in, a check box): arrows move it, OK taps under it
+            final android.graphics.Paint fill = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG),
+                    ring = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+
+            @Override protected void onDraw(android.graphics.Canvas c) {
+                float r = getWidth() / 2f;
+                fill.setColor(0xCCFFFFFF);
+                ring.setColor(0xFF1E1E1E);
+                ring.setStyle(android.graphics.Paint.Style.STROKE);
+                ring.setStrokeWidth(r * 0.22f);
+                c.drawCircle(r, r, r * 0.7f, fill);
+                c.drawCircle(r, r, r * 0.7f, ring);
+            }
+        };
+        int size = Math.round(getResources().getDisplayMetrics().heightPixels * 0.035f);
+        root.addView(pointer, new android.widget.FrameLayout.LayoutParams(size, size));
+        pointer.setVisibility(View.GONE);
+        setContentView(root);
         String cookies = CookieManager.getInstance().getCookie("https://www.instagram.com");
         web.loadUrl(cookies != null && cookies.contains("sessionid=") ? START : LOGIN);   // signed in, or the sign-in page first
     }
@@ -110,8 +125,40 @@ public class ReelsActivity extends Activity {
         return !typing && url != null && url.contains("instagram.com/reel");
     }
 
+    private void movePointer(int key, int repeat) {
+        android.util.DisplayMetrics m = getResources().getDisplayMetrics();
+        if (px < 0) {
+            px = m.widthPixels / 2f;
+            py = m.heightPixels / 2f;
+        }
+        float step = m.heightPixels * (repeat < 3 ? 0.03f : repeat < 10 ? 0.06f : 0.1f);   // faster the longer it's held
+        if (key == KeyEvent.KEYCODE_DPAD_LEFT) px -= step;
+        if (key == KeyEvent.KEYCODE_DPAD_RIGHT) px += step;
+        if (key == KeyEvent.KEYCODE_DPAD_UP) py -= step;
+        if (key == KeyEvent.KEYCODE_DPAD_DOWN) py += step;
+        px = Math.max(0, Math.min(m.widthPixels - 1, px));
+        py = Math.max(0, Math.min(m.heightPixels - 1, py));
+        pointer.setTranslationX(px - pointer.getWidth() / 2f);
+        pointer.setTranslationY(py - pointer.getHeight() / 2f);
+    }
+
+    /** A finger's tap where the pointer is: the page (and a check box inside it) takes it as a touch. */
+    private void tap() {
+        if (px < 0) movePointer(0, 0);
+        long t = android.os.SystemClock.uptimeMillis();
+        android.view.MotionEvent down = android.view.MotionEvent.obtain(t, t, android.view.MotionEvent.ACTION_DOWN, px, py, 0);
+        android.view.MotionEvent up = android.view.MotionEvent.obtain(t, t + 50, android.view.MotionEvent.ACTION_UP, px, py, 0);
+        down.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);
+        up.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);
+        web.dispatchTouchEvent(down);
+        web.dispatchTouchEvent(up);
+        down.recycle();
+        up.recycle();
+    }
+
     @Override public boolean dispatchKeyEvent(KeyEvent e) {
         int k = e.getKeyCode();
+        if (onReels()) pointer.setVisibility(View.GONE);
         if (onReels() && (k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_DPAD_UP
                 || k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER)) {
             if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
@@ -122,13 +169,13 @@ public class ReelsActivity extends Activity {
             }
             return true;
         }
-        if (!onReels() && (k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_DPAD_UP
-                || (!typing && (k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER)))) {
-            if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {   // a text field's own OK opens the keyboard
-                web.evaluateJavascript(SCRIPT, null);
-                if (k == KeyEvent.KEYCODE_DPAD_DOWN) web.evaluateJavascript("fmtvFocus(1)", null);
-                else if (k == KeyEvent.KEYCODE_DPAD_UP) web.evaluateJavascript("fmtvFocus(-1)", null);
-                else web.evaluateJavascript("fmtvClick()", null);
+        boolean arrow = k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_LEFT
+                || k == KeyEvent.KEYCODE_DPAD_RIGHT;
+        if (!onReels() && (arrow || k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER)) {
+            pointer.setVisibility(View.VISIBLE);
+            if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                if (arrow) movePointer(k, e.getRepeatCount());
+                else if (e.getRepeatCount() == 0) tap();
             }
             return true;
         }
