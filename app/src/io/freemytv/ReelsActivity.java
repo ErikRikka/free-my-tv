@@ -45,10 +45,6 @@ public class ReelsActivity extends Activity {
             + "document.addEventListener('focusout',function(){setTimeout(function(){FMTV.typing(typing());},0);},true);"
             + "function current(){var vs=[].slice.call(document.querySelectorAll('video')),mid=innerHeight/2,best=null,bd=1e9;"
             + "vs.forEach(function(v){var r=v.getBoundingClientRect();if(r.height<50)return;var dd=Math.abs(r.top+r.height/2-mid);if(dd<bd){bd=dd;best=v;}});return [vs,best];}"
-            + "window.fmtvMove=function(dir){var c=current(),vs=c[0].filter(function(v){return v.getBoundingClientRect().height>=50;}),i=vs.indexOf(c[1]);"
-            + "var n=vs[i+dir];if(n){n.scrollIntoView({block:'center',behavior:'smooth'});return;}"
-            + "var s=document.scrollingElement;(c[1]?c[1].closest('main')||s:s);window.scrollBy({top:dir*innerHeight,behavior:'smooth'});"
-            + "var e=document.querySelectorAll('[style*=\"scroll-snap\"],main div');for(var k=0;k<e.length;k++){var el=e[k];if(el.scrollHeight>el.clientHeight+50&&getComputedStyle(el).overflowY!=='visible'){el.scrollBy({top:dir*el.clientHeight,behavior:'smooth'});break;}}};"
             // Right: the current reel's heart, only if it isn't liked yet (pressing again doesn't take the like back).
             + "window.fmtvLike=function(){var v=current()[1];if(!v)return 'none';for(var el=v;el;el=el.parentElement){"
             + "if(el.querySelector('svg[aria-label=\\\"Unlike\\\"]'))return 'already';"
@@ -73,10 +69,16 @@ public class ReelsActivity extends Activity {
             + "FMTV.progress(v.currentTime/v.duration,b/innerHeight);},200);"
             // The TV has five video decoders and the site keeps hold of them; when a reel can't get one ("trouble playing"),
             // the page is opened again on that same reel, which lets them all go.
-            + "setInterval(function(){if(window.__fmtvReload)return;var v=current()[1];"
-            + "if((v&&v.error)||/trouble playing this video/i.test(document.body.innerText||'')){window.__fmtvReload=1;location.replace(location.href);}},1000);"
+            + "setInterval(function(){var v=current()[1];"
+            + "if((v&&v.error)||/trouble playing this video/i.test(document.body.innerText||''))FMTV.reload(location.href);},1000);"
             // What's on screen, for the assistant: author, music, caption.
             + "setInterval(function(){var v=current()[1];if(!v)return;var el=v.parentElement;FMTV.reel(location.href,(el.innerText||'').slice(0,600));},2000);"
+            // The next (or previous) reel put in place at once: the site starts loading it straight away, about a second
+            // sooner than after a swipe's scrolling settles. 'drag' when it isn't on the page yet (a swipe loads more).
+            + "window.fmtvJump=function(dir){var vs=[].slice.call(document.querySelectorAll('video')).filter(function(v){return v.getBoundingClientRect().height>=50;})"
+            + ".sort(function(a,b){return a.getBoundingClientRect().top-b.getBoundingClientRect().top;}),c=current()[1],n=vs[vs.indexOf(c)+dir];"
+            + "if(!c||!n)return 'drag';var sc=c;while(sc&&!(sc.scrollHeight>sc.clientHeight+10&&/(auto|scroll)/.test(getComputedStyle(sc).overflowY)))sc=sc.parentElement;"
+            + "(sc||document.scrollingElement).scrollBy({top:n.getBoundingClientRect().top-c.getBoundingClientRect().top,behavior:'instant'});return 'ok';};"
             + "window.fmtvToggle=function(){var v=current()[1];if(!v)return;v.muted=false;if(v.paused)v.play();else v.pause();};"
             + "})();";
 
@@ -120,11 +122,15 @@ public class ReelsActivity extends Activity {
                 dialog = on;
             }
 
+            @JavascriptInterface public void reload(String url) {
+                long now = System.currentTimeMillis();
+                if (now - reloadedAt < 8000) return;
+                reloadedAt = now;
+                ui.post(() -> web.loadUrl(url));
+            }
+
             @JavascriptInterface public void next() {
-                ui.post(() -> {
-                    android.util.DisplayMetrics m = getResources().getDisplayMetrics();
-                    drag(m.widthPixels / 2f, m.heightPixels * 0.6f);
-                });
+                ui.post(() -> go(1));
             }
 
             @JavascriptInterface public void progress(float done, float bottom) {
@@ -233,6 +239,7 @@ public class ReelsActivity extends Activity {
     private boolean auto;
     private long okAt;
     private int retries;
+    private volatile long reloadedAt;
 
     /** A line on screen for a moment. */
     private void say(String text) {
@@ -321,6 +328,16 @@ public class ReelsActivity extends Activity {
         pointer.setTranslationY(py - pointer.getHeight() / 2f);
     }
 
+    /** To the next reel (1) or the one before (-1): at once if it's on the page, else a finger's swipe, which loads more. */
+    private void go(int dir) {
+        web.evaluateJavascript("fmtvJump(" + dir + ")", r -> {
+            if (r.contains("drag")) {
+                android.util.DisplayMetrics m = getResources().getDisplayMetrics();
+                drag(m.widthPixels / 2f, dir * m.heightPixels * 0.6f);
+            }
+        });
+    }
+
     /** A finger dragging the page up by dy (down for a negative one), in real time, a step a frame, as a finger would. */
     private void drag(float x, float dy) {
         android.util.DisplayMetrics m = getResources().getDisplayMetrics();
@@ -363,10 +380,8 @@ public class ReelsActivity extends Activity {
         if (onReels() && (k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_RIGHT || ok)) {
             boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
             if (down && e.getRepeatCount() == 0) web.evaluateJavascript(SCRIPT, null);
-            // A finger's swipe on the page: the site turns the reel, loads more and changes the address itself.
-            android.util.DisplayMetrics m = getResources().getDisplayMetrics();
-            if (k == KeyEvent.KEYCODE_DPAD_DOWN && down && e.getRepeatCount() == 0) drag(m.widthPixels / 2f, m.heightPixels * 0.6f);
-            else if (k == KeyEvent.KEYCODE_DPAD_UP && down && e.getRepeatCount() == 0) drag(m.widthPixels / 2f, -m.heightPixels * 0.6f);
+            if (k == KeyEvent.KEYCODE_DPAD_DOWN && down && e.getRepeatCount() == 0) go(1);
+            else if (k == KeyEvent.KEYCODE_DPAD_UP && down && e.getRepeatCount() == 0) go(-1);
             else if (k == KeyEvent.KEYCODE_DPAD_RIGHT && !down) {
                 // Held (TCL's remote sends no repeats, so by how long): into Saved; a press: a like.
                 if (e.getEventTime() - e.getDownTime() > 600) {
