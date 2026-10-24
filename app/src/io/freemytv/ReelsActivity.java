@@ -40,6 +40,7 @@ public class ReelsActivity extends Activity {
             + "setInterval(function(){[].forEach.call(document.querySelectorAll('video'),function(v){if(!v.paused&&v.muted){v.muted=false;v.volume=1;}});},1000);"
             + "function typing(){var a=document.activeElement;return !!a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.isContentEditable);}"
             + "document.addEventListener('focusin',function(){FMTV.typing(typing());},true);"
+            + "setInterval(function(){FMTV.dialog(!!document.querySelector('[role=dialog]'));},400);"   // a question over the reels
             + "document.addEventListener('focusout',function(){setTimeout(function(){FMTV.typing(typing());},0);},true);"
             + "function current(){var vs=[].slice.call(document.querySelectorAll('video')),mid=innerHeight/2,best=null,bd=1e9;"
             + "vs.forEach(function(v){var r=v.getBoundingClientRect();if(r.height<50)return;var dd=Math.abs(r.top+r.height/2-mid);if(dd<bd){bd=dd;best=v;}});return [vs,best];}"
@@ -53,7 +54,7 @@ public class ReelsActivity extends Activity {
     private WebView web;
     private View pointer;
     private float px = -1, py = -1;
-    private volatile boolean typing;
+    private volatile boolean typing, dialog;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override protected void onCreate(Bundle state) {
@@ -63,7 +64,11 @@ public class ReelsActivity extends Activity {
         } catch (IllegalStateException ignored) {
         }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        web = new WebView(this);
+        // A phone's shape in the middle of the screen (Instagram's site for phones, which this WebView is, fits a reel
+        // into it whole), drawn a little larger than a phone would so the page is about 400 points wide.
+        android.content.res.Configuration phone = new android.content.res.Configuration(getResources().getConfiguration());
+        phone.densityDpi = 240;
+        web = new WebView(createConfigurationContext(phone));
         web.setBackgroundColor(Color.BLACK);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -75,6 +80,10 @@ public class ReelsActivity extends Activity {
         web.addJavascriptInterface(new Object() {
             @JavascriptInterface public void typing(boolean on) {
                 typing = on;
+            }
+
+            @JavascriptInterface public void dialog(boolean on) {
+                dialog = on;
             }
         }, "FMTV");
         web.setWebChromeClient(new WebChromeClient());
@@ -95,7 +104,10 @@ public class ReelsActivity extends Activity {
         });
         web.setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
         android.widget.FrameLayout root = new android.widget.FrameLayout(this);
-        root.addView(web);
+        android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+        root.setBackgroundColor(Color.BLACK);
+        root.addView(web, new android.widget.FrameLayout.LayoutParams(Math.round(dm.heightPixels * 9f / 16), dm.heightPixels,
+                android.view.Gravity.CENTER_HORIZONTAL));
         pointer = new View(this) {   // off the reels (signing in, a check box): arrows move it, OK taps under it
             final android.graphics.Paint fill = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG),
                     ring = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
@@ -118,10 +130,10 @@ public class ReelsActivity extends Activity {
         web.loadUrl(cookies != null && cookies.contains("sessionid=") ? START : LOGIN);   // signed in, or the sign-in page first
     }
 
-    /** On the reels (not typing, not signing in), the remote goes through them. */
+    /** On the reels (not typing, no question over them, not signing in), the remote goes through them. */
     private boolean onReels() {
         String url = web.getUrl();
-        return !typing && url != null && url.contains("instagram.com/reel");
+        return !typing && !dialog && url != null && url.contains("instagram.com/reel");
     }
 
     private void movePointer(int key, int repeat) {
@@ -155,7 +167,7 @@ public class ReelsActivity extends Activity {
             int action = i == 0 ? android.view.MotionEvent.ACTION_DOWN : i > steps ? android.view.MotionEvent.ACTION_UP
                     : android.view.MotionEvent.ACTION_MOVE;
             float y = y0 + (y1 - y0) * Math.min(i, steps) / steps;
-            android.view.MotionEvent ev = android.view.MotionEvent.obtain(t, t + i * 30L, action, x, y, 0);
+            android.view.MotionEvent ev = android.view.MotionEvent.obtain(t, t + i * 30L, action, x - web.getLeft(), y, 0);
             ev.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);
             web.dispatchTouchEvent(ev);
             ev.recycle();
@@ -166,8 +178,9 @@ public class ReelsActivity extends Activity {
     private void tap() {
         if (px < 0) movePointer(0, 0);
         long t = android.os.SystemClock.uptimeMillis();
-        android.view.MotionEvent down = android.view.MotionEvent.obtain(t, t, android.view.MotionEvent.ACTION_DOWN, px, py, 0);
-        android.view.MotionEvent up = android.view.MotionEvent.obtain(t, t + 50, android.view.MotionEvent.ACTION_UP, px, py, 0);
+        float x = px - web.getLeft();
+        android.view.MotionEvent down = android.view.MotionEvent.obtain(t, t, android.view.MotionEvent.ACTION_DOWN, x, py, 0);
+        android.view.MotionEvent up = android.view.MotionEvent.obtain(t, t + 50, android.view.MotionEvent.ACTION_UP, x, py, 0);
         down.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);
         up.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);
         web.dispatchTouchEvent(down);
