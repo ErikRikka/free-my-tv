@@ -66,7 +66,10 @@ public class ReelsActivity extends Activity {
             + "if(v.currentTime<1)v.__fmtvNext=0;if(v.duration&&v.currentTime>v.duration-0.4&&!v.__fmtvNext){v.__fmtvNext=1;FMTV.next();}},true);"
             // How far the reel is, and where its bottom edge is (the bar is drawn there, the site has none on phones).
             + "setInterval(function(){var v=current()[1];if(!v||!v.duration)return FMTV.progress(-1,0);var r=v.getBoundingClientRect();"
-            + "var n=document.querySelector('nav,[role=tablist]'),b=Math.min(r.bottom,innerHeight);if(n){var t=n.getBoundingClientRect().top;if(t>0&&t<b)b=t;}"
+            // Its tab bar: up from the Home icon to the strip as wide as the page.
+            + "var b=Math.min(r.bottom,innerHeight),n=document.querySelector('svg[aria-label=\\\"Home\\\"]');"
+            + "while(n&&n.getBoundingClientRect().width<innerWidth*0.9)n=n.parentElement;"
+            + "if(n){var t=n.getBoundingClientRect().top;if(t>innerHeight*0.6&&t<b)b=t;}"
             + "FMTV.progress(v.currentTime/v.duration,b/innerHeight);},200);"
             // The TV has five video decoders and the site keeps hold of them; when a reel can't get one ("trouble playing"),
             // the page is opened again on that same reel, which lets them all go.
