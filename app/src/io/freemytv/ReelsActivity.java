@@ -359,7 +359,8 @@ public class ReelsActivity extends Activity {
         lp.width = web.getWidth();
         lp.height = h;
         lp.leftMargin = web.getLeft();
-        lp.topMargin = Math.round(web.getTop() + web.getHeight() * bottom) - h;
+        int screen = getResources().getDisplayMetrics().heightPixels;   // the page runs past the screen's bottom (no tab bar)
+        lp.topMargin = Math.min(Math.round(web.getTop() + web.getHeight() * bottom), screen) - h;
         bar.setLayoutParams(lp);
         barDone = Math.max(0, Math.min(1, done));
         bar.invalidate();
