@@ -62,19 +62,22 @@ public class ReelsActivity extends Activity {
             + "var u=el.querySelector('svg[aria-label=\\\"Unlike\\\"]');if(u){(u.closest('[role=button],button')||u).click();return 'unliked';}"
             + "var h=el.querySelector('svg[aria-label=\\\"Like\\\"]');if(h){(h.closest('[role=button],button')||h).click();return 'liked';}}return 'none';};"
             // Long Right: into Saved, the way the site's own bookmark does it (its media id from the reel's code in the address).
-            + "window.fmtvSave=function(){var m=location.pathname.match(/\\/reels?\\/([\\w-]+)/);if(!m)return Promise.resolve('none');"
+            + "window.fmtvSave=function(){var m=location.pathname.match(/\\/reels?\\/([\\w-]+)/);if(!m)return FMTV.saved('none');"
             + "var a='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_',id=BigInt(0);"
             + "for(var i=0;i<m[1].length;i++)id=id*BigInt(64)+BigInt(a.indexOf(m[1][i]));"
             + "var t=(document.cookie.match(/csrftoken=([^;]+)/)||[])[1]||'';"
             + "return fetch('/api/v1/web/save/'+id+'/save/',{method:'POST',credentials:'include',headers:{'x-csrftoken':t,"
             + "'x-ig-app-id':'936619743392459','x-requested-with':'XMLHttpRequest','content-type':'application/x-www-form-urlencoded'}})"
-            + ".then(function(r){return r.ok?'saved':'error '+r.status;},function(e){return 'error';});};"
+            + ".then(function(r){FMTV.saved(r.ok?'saved':'error '+r.status);},function(e){FMTV.saved('error');});};"   // a promise: told back when done
             // Double OK: the next reel when this one ends (they loop on the site, so near the end rather than 'ended').
             + "window.fmtvAuto=false;document.addEventListener('timeupdate',function(e){var v=e.target;if(!fmtvAuto||v!==current()[1])return;"
             + "if(v.currentTime<1)v.__fmtvNext=0;if(v.duration&&v.currentTime>v.duration-0.4&&!v.__fmtvNext){v.__fmtvNext=1;FMTV.next();}},true);"
             // How far the reel is, and where its bottom edge is (the bar is drawn there, the site has none on phones).
-            + "fmtvEvery(function(){var v=current()[1];if(!v||!v.duration)return FMTV.progress(-1,0);"
-            + "FMTV.progress(v.currentTime/v.duration,Math.min(v.getBoundingClientRect().bottom,innerHeight)/innerHeight);},250);"
+            // and what it's doing: 0 playing, 1 waiting for its file, 2 paused by you
+            + "fmtvEvery(function(){var v=current()[1];if(!v)return FMTV.progress(-1,0,/^\\/reels?\\//.test(location.pathname)?1:0);"   // no reel yet: waiting
+            + "var st=v===window.__fmtvUserPaused&&v.paused?2:v!==window.__fmtvRewind&&(v.readyState<3||v.paused)?1:0;"
+            + "if(!v.duration)return FMTV.progress(-1,0,st);"
+            + "FMTV.progress(v.currentTime/v.duration,Math.min(v.getBoundingClientRect().bottom,innerHeight)/innerHeight,st);},250);"
             // The TV has five video decoders and the site keeps hold of them; when a reel can't get one ("trouble playing"),
             // the page is opened again on that same reel, which lets them all go.
             + "fmtvEvery(function(){var v=current()[1];"
@@ -143,7 +146,7 @@ public class ReelsActivity extends Activity {
             + "fmtvEvery(function(){var v=current()[1];if(!v)return;var el=v.parentElement;FMTV.reel(location.href,(el.innerText||'').slice(0,600));},2000);"
             // Held Right: playbackRate 2 (the site sets it back by itself, so again every 0.1 s). Held Left: video plays no
             // way backwards, so it steps back 0.2 s every 0.1 s. 0: as before, playing unless you had paused it.
-            + "window.fmtvSeek=function(r){var v=current()[1];if(!v)return;clearInterval(window.__fmtvBack);v.playbackRate=1;"
+            + "window.fmtvSeek=function(r){var v=current()[1];if(!v)return;clearInterval(window.__fmtvBack);v.playbackRate=1;window.__fmtvRewind=r<0?v:null;"
             + "if(r>0){if(v.paused)v.play();window.__fmtvBack=setInterval(function(){if(v.playbackRate!==r)v.playbackRate=r;},100);v.playbackRate=r;}"
             + "else if(r<0){v.pause();window.__fmtvBack=setInterval(function(){v.currentTime=Math.max(0,v.currentTime-0.2);},100);}"
             + "else{if(v!==window.__fmtvUserPaused)v.play();var n=0;window.__fmtvBack=setInterval(function(){if(v.playbackRate!==1)v.playbackRate=1;"
@@ -152,12 +155,23 @@ public class ReelsActivity extends Activity {
             + "window.fmtvAway=function(away){[].forEach.call(document.querySelectorAll('video'),function(v){if(away)v.pause();});"
             + "if(!away){var c=current()[1];if(c&&c!==window.__fmtvUserPaused)c.play();}};"
             + "window.fmtvToggle=function(){var v=current()[1];if(!v)return;v.muted=false;if(v.paused){window.__fmtvUserPaused=null;v.play();}"
-            + "else{window.__fmtvUserPaused=v;v.pause();}};"
+            + "else{window.__fmtvUserPaused=v;v.pause();}return v.paused?'paused':'playing';};"
             + "})();";
 
     private WebView web;
     private View pointer;
-    private android.widget.TextView heart, note;
+    private android.widget.TextView note;
+    private Sign heart, played, loading, nudge, mark;
+    private android.util.Pair<View, android.widget.FrameLayout.LayoutParams> legend;
+    private android.animation.ValueAnimator filling;
+    private android.widget.LinearLayout status;
+    private android.widget.TextView statusTitle, statusBody, statusKeys;
+    private Sign statusRing;
+    private android.animation.ObjectAnimator statusSpin;
+    private boolean stuck;   // retries used up: OK tries again, Back goes home
+    private final Runnable connecting = () -> showStatus(Ui.tr("Conectando ao Instagram…", "Connecting to Instagram…", "Conectando con Instagram…"), null, true);
+    private android.animation.ObjectAnimator spin;
+    private long waitingSince;
     private View bar;
     private float barDone;
     private float px = -1, py = -1;
@@ -166,6 +180,7 @@ public class ReelsActivity extends Activity {
     @SuppressLint("SetJavaScriptEnabled")
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        Ui.init(this);
         try {
             WebView.setDataDirectorySuffix("reels");   // its own process: Android wants each to keep its web data apart
         } catch (IllegalStateException ignored) {
@@ -219,12 +234,25 @@ public class ReelsActivity extends Activity {
                 });
             }
 
+            @JavascriptInterface public void saved(String r) {
+                ui.post(() -> {
+                    boolean ok = "saved".equals(r);
+                    showSaved(ok);
+                    say(ok ? Ui.tr("Salvo", "Saved", "Guardado") : r != null && r.matches("error 40[13]")
+                            ? Ui.tr("Não deu para salvar: você entrou na conta?", "Couldn't save: are you signed in?", "No se pudo guardar: ¿iniciaste sesión?")
+                            : Ui.tr("Não deu para salvar", "Couldn't save", "No se pudo guardar"));
+                });
+            }
+
             @JavascriptInterface public void next() {
                 ui.post(() -> go(1));
             }
 
-            @JavascriptInterface public void progress(float done, float bottom) {
-                ui.post(() -> showProgress(done, bottom));
+            @JavascriptInterface public void progress(float done, float bottom, int state) {
+                ui.post(() -> {
+                    showProgress(done, bottom);
+                    showState(state);
+                });
             }
 
             @JavascriptInterface public void reel(String url, String text) {
@@ -235,10 +263,17 @@ public class ReelsActivity extends Activity {
         web.setWebViewClient(new WebViewClient() {
             @Override public void onPageStarted(WebView v, String url, android.graphics.Bitmap icon) {
                 v.evaluateJavascript(SCRIPT, null);
+                ui.removeCallbacks(connecting);
+                if (!stuck && retries == 0) ui.postDelayed(connecting, 800);   // a quick load shows nothing (a retry keeps its own line)
             }
 
             @Override public void onPageFinished(WebView v, String url) {
-                if (!failed) retries = 0;   // the error page is "finished" too: only a real page clears the count
+                if (!failed) {   // the error page is "finished" too: only a real page clears the count
+                    retries = 0;
+                    stuck = false;
+                    ui.removeCallbacks(connecting);
+                    showStatus(null, null, false);
+                }
                 failed = false;
                 v.evaluateJavascript(SCRIPT, null);
                 v.evaluateJavascript("fmtvAuto=" + auto, null);   // a reload doesn't turn autoplay off
@@ -250,7 +285,15 @@ public class ReelsActivity extends Activity {
             @Override public void onReceivedError(WebView v, android.webkit.WebResourceRequest r, android.webkit.WebResourceError err) {
                 if (!r.isForMainFrame()) return;
                 failed = true;
-                if (retries >= 5) return;
+                ui.removeCallbacks(connecting);
+                if (retries >= 5) {   // given up: what's wrong, and the way on, over Chromium's own error page
+                    stuck = true;
+                    showStatus(Ui.tr("Sem conexão com o Instagram", "No connection to Instagram", "Sin conexión con Instagram"),
+                            vpnHint(Ui.tr("Verifique a conexão com a internet.", "Check the internet connection.", "Comprueba la conexión a internet.")), false);
+                    return;
+                }
+                showStatus(Ui.tr("Sem conexão com o Instagram", "No connection to Instagram", "Sin conexión con Instagram"),
+                        Ui.tr("Tentando de novo…", "Trying again…", "Intentando de nuevo…"), true);
                 retries++;
                 String url = r.getUrl().toString();
                 ui.postDelayed(() -> v.loadUrl(url), 1500L * retries);
@@ -282,14 +325,37 @@ public class ReelsActivity extends Activity {
                 c.drawCircle(r, r, r * 0.7f, ring);
             }
         };
-        heart = new android.widget.TextView(this);
-        heart.setText("♥");
-        heart.setTextColor(0xFFFF3040);
-        heart.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, dm.heightPixels * 0.22f);
-        heart.setShadowLayer(dm.heightPixels * 0.02f, 0, 0, 0x80000000);
+        int column = Math.round(dm.heightPixels * 9f / 16), sign = Math.round(dm.heightPixels * 0.2f);
+        heart = new Sign(this);
         heart.setAlpha(0f);
-        root.addView(heart, new android.widget.FrameLayout.LayoutParams(android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.Gravity.CENTER));
+        root.addView(heart, new android.widget.FrameLayout.LayoutParams(sign, sign, android.view.Gravity.CENTER));
+        played = new Sign(this);   // paused by you: a play sign stays over the reel until it goes on
+        played.set(Sign.PLAY);
+        played.setAlpha(0f);
+        root.addView(played, new android.widget.FrameLayout.LayoutParams(sign * 3 / 4, sign * 3 / 4, android.view.Gravity.CENTER));
+        loading = new Sign(this);   // the reel waits for its file: a turning ring, so a black reel isn't a broken one
+        loading.set(Sign.LOADING);
+        loading.setVisibility(View.GONE);
+        root.addView(loading, new android.widget.FrameLayout.LayoutParams(sign / 2, sign / 2, android.view.Gravity.CENTER));
+        spin = android.animation.ObjectAnimator.ofFloat(loading, "rotation", 0f, 360f);
+        spin.setDuration(900);
+        spin.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+        spin.setInterpolator(new android.view.animation.LinearInterpolator());
+        status = statusPanel(dm);
+        root.addView(status, new android.widget.FrameLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+        mark = new Sign(this);   // OK held: a ring fills up to "saved"
+        mark.set(Sign.SAVED);
+        mark.setAlpha(0f);
+        root.addView(mark, new android.widget.FrameLayout.LayoutParams(sign * 3 / 4, sign * 3 / 4, android.view.Gravity.CENTER));
+        legend = legend(dm, column);
+        root.addView(legend.first, legend.second);
+        nudge = new Sign(this);   // Up or Down taken, at once, beside the reel (the page may take a moment to move)
+        nudge.setAlpha(0f);
+        android.widget.FrameLayout.LayoutParams gp = new android.widget.FrameLayout.LayoutParams(sign / 2, sign / 2,
+                android.view.Gravity.CENTER_VERTICAL | android.view.Gravity.START);
+        gp.leftMargin = (dm.widthPixels + column) / 2 + dm.heightPixels / 20;
+        root.addView(nudge, gp);
         bar = new View(this) {
             final android.graphics.Paint p = new android.graphics.Paint();
 
@@ -319,6 +385,12 @@ public class ReelsActivity extends Activity {
         root.addView(pointer, new android.widget.FrameLayout.LayoutParams(size, size));
         pointer.setVisibility(View.GONE);
         setContentView(root);
+        android.content.SharedPreferences seen = getSharedPreferences("reels-ui", MODE_PRIVATE);
+        int opened = seen.getInt("legend", 0);
+        if (opened < 3) {   // the first few times, the remote's keys are shown by themselves; Left shows them again
+            seen.edit().putInt("legend", opened + 1).apply();
+            ui.postDelayed(() -> showLegend(true), 2500);
+        }
         String cookies = CookieManager.getInstance().getCookie("https://www.instagram.com");
         web.loadUrl(cookies != null && cookies.contains("sessionid=") ? START : LOGIN);   // signed in, or the sign-in page first
     }
@@ -330,7 +402,10 @@ public class ReelsActivity extends Activity {
     }
 
     private final android.os.Handler ui = new android.os.Handler(android.os.Looper.getMainLooper());
-    private final Runnable pause = () -> web.evaluateJavascript("fmtvToggle()", null);
+    /** OK: paused or on again at once (a second OK right after also turns auto-scroll on or off). */
+    private void toggle() {
+        web.evaluateJavascript("fmtvToggle()", r -> showState(r != null && r.contains("paused") ? 2 : 0));
+    }
     private boolean auto, seeking;
     private final Runnable fastOn = () -> seek(2, "▶▶  ×2"), backOn = () -> seek(-2, "◀◀  ×2");
 
@@ -357,7 +432,7 @@ public class ReelsActivity extends Activity {
         note.setText(text);
         note.animate().cancel();
         note.setAlpha(1f);
-        note.animate().alpha(0f).setStartDelay(1600).setDuration(400).start();
+        note.animate().alpha(0f).setStartDelay(1600).setDuration(400).withEndAction(() -> note.animate().setStartDelay(0)).start();
     }
 
     // MARK: - What's on screen, for the assistant (Live.session reads it): a file, since it lives in another process.
@@ -417,13 +492,226 @@ public class ReelsActivity extends Activity {
         bar.invalidate();
     }
 
-    /** A big heart over the reel for a moment: the like went through. */
-    private void showHeart(String sign) {
-        heart.setText(sign);
+    /**
+     * What the remote does here, in the empty black to the left of the reel: key over what it does, set against the reel's
+     * edge. Built once; shown the first few times and with Left.
+     */
+    private android.util.Pair<View, android.widget.FrameLayout.LayoutParams> legend(android.util.DisplayMetrics dm, int column) {
+        android.widget.LinearLayout box = new android.widget.LinearLayout(this);
+        box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        box.setGravity(android.view.Gravity.END);
+        String[][] rows = {
+                {Ui.tr("Cima / Baixo", "Up / Down", "Arriba / Abajo"), Ui.tr("Próximo ou anterior", "Next or previous reel", "Siguiente o anterior")},
+                {Ui.tr("Direita", "Right", "Derecha"), Ui.tr("Curtir", "Like", "Me gusta")},
+                {Ui.tr("Segurar direita / esquerda", "Hold Right / Left", "Mantener derecha / izquierda"),
+                        Ui.tr("×2 para frente ou para trás", "×2 forward or back", "×2 adelante o atrás")},
+                {"OK", Ui.tr("Pausa", "Pause", "Pausa")},
+                {Ui.tr("OK duas vezes", "OK twice", "OK dos veces"), Ui.tr("Rolagem automática", "Auto-scroll", "Desplazamiento automático")},
+                {Ui.tr("Segurar OK", "Hold OK", "Mantener OK"), Ui.tr("Salvar", "Save", "Guardar")},
+                {Ui.tr("Esquerda", "Left", "Izquierda"), Ui.tr("Mostrar de novo", "Show this again", "Mostrar de nuevo")},
+        };
+        float h = dm.heightPixels;
+        for (int i = 0; i < rows.length; i++) {
+            android.widget.TextView key = new android.widget.TextView(this), what = new android.widget.TextView(this);
+            key.setText(rows[i][0]);
+            key.setTypeface(Ui.semibold);
+            key.setTextColor(0xFFFFFFFF);
+            key.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, h * 0.027f);
+            what.setText(rows[i][1]);
+            what.setTypeface(Ui.regular);
+            what.setTextColor(0xB3FFFFFF);
+            what.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, h * 0.025f);
+            key.setGravity(android.view.Gravity.END);
+            what.setGravity(android.view.Gravity.END);
+            android.widget.LinearLayout.LayoutParams lp = new android.widget.LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.topMargin = i == 0 ? 0 : Math.round(h * 0.03f);
+            box.addView(key, lp);
+            box.addView(what);
+        }
+        box.setAlpha(0f);
+        box.setVisibility(View.GONE);
+        int side = (dm.widthPixels - column) / 2;
+        android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(side - Math.round(h * 0.06f) - Math.round(h * 0.074f),
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.Gravity.CENTER_VERTICAL | android.view.Gravity.START);
+        lp.leftMargin = Math.round(h * 0.074f);   // inside the TV's safe area
+        return new android.util.Pair<>(box, lp);
+    }
+
+    /** In place of the page while it can't be shown: connecting, or no connection (and what to do). */
+    private android.widget.LinearLayout statusPanel(android.util.DisplayMetrics dm) {
+        float h = dm.heightPixels;
+        android.widget.LinearLayout box = new android.widget.LinearLayout(this);
+        box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        box.setGravity(android.view.Gravity.CENTER);
+        box.setBackgroundColor(0xFF000000);
+        box.setClickable(true);
+        statusRing = new Sign(this);
+        statusRing.set(Sign.LOADING);
+        int ring = Math.round(h * 0.07f);
+        android.widget.LinearLayout.LayoutParams rp = new android.widget.LinearLayout.LayoutParams(ring, ring);
+        rp.bottomMargin = Math.round(h * 0.035f);
+        box.addView(statusRing, rp);
+        statusSpin = android.animation.ObjectAnimator.ofFloat(statusRing, "rotation", 0f, 360f);
+        statusSpin.setDuration(900);
+        statusSpin.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+        statusSpin.setInterpolator(new android.view.animation.LinearInterpolator());
+        statusTitle = new android.widget.TextView(this);
+        statusTitle.setTypeface(Ui.semibold);
+        statusTitle.setTextColor(0xFFFFFFFF);
+        statusTitle.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, h * 0.04f);
+        statusTitle.setGravity(android.view.Gravity.CENTER);
+        box.addView(statusTitle);
+        statusBody = new android.widget.TextView(this);
+        statusBody.setTypeface(Ui.regular);
+        statusBody.setTextColor(0xB3FFFFFF);
+        statusBody.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, h * 0.028f);
+        statusBody.setGravity(android.view.Gravity.CENTER);
+        statusBody.setMaxWidth(Math.round(h * 0.9f));
+        statusBody.setLineSpacing(0, 1.2f);
+        android.widget.LinearLayout.LayoutParams bp = new android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+        bp.topMargin = Math.round(h * 0.015f);
+        box.addView(statusBody, bp);
+        statusKeys = new android.widget.TextView(this);
+        statusKeys.setTypeface(Ui.medium);
+        statusKeys.setTextColor(0xFFFFFFFF);
+        statusKeys.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, h * 0.027f);
+        statusKeys.setText(Ui.tr("OK  tentar de novo     ·     Voltar  início", "OK  try again     ·     Back  home",
+                "OK  reintentar     ·     Atrás  inicio"));
+        android.widget.LinearLayout.LayoutParams kp = new android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+        kp.topMargin = Math.round(h * 0.05f);
+        box.addView(statusKeys, kp);
+        box.setVisibility(View.GONE);
+        return box;
+    }
+
+    /** The panel with a title (null: gone), a line under it, and a turning ring (waiting) or the keys (given up). */
+    private void showStatus(String title, String body, boolean waiting) {
+        if (title == null) {
+            if (status.getVisibility() == View.VISIBLE) {
+                statusSpin.cancel();
+                status.animate().alpha(0f).setDuration(250).withEndAction(() -> status.setVisibility(View.GONE)).start();
+            }
+            return;
+        }
+        statusTitle.setText(title);
+        statusBody.setText(body == null ? "" : body);
+        statusBody.setVisibility(body == null ? View.GONE : View.VISIBLE);
+        statusRing.setVisibility(waiting ? View.VISIBLE : View.GONE);
+        statusKeys.setVisibility(waiting ? View.GONE : View.VISIBLE);
+        if (waiting && !statusSpin.isStarted()) statusSpin.start();
+        if (!waiting) statusSpin.cancel();
+        if (status.getVisibility() != View.VISIBLE) {
+            status.animate().cancel();
+            status.setAlpha(0f);
+            status.setVisibility(View.VISIBLE);
+            status.animate().alpha(1f).setDuration(200).start();
+        }
+    }
+
+    /** The line under "no connection": Instagram is reached through a VPN here, so say when it's off. */
+    private String vpnHint(String line) {
+        try {
+            android.net.ConnectivityManager cm = (android.net.ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+            for (android.net.Network n : cm.getAllNetworks()) {
+                android.net.NetworkCapabilities nc = cm.getNetworkCapabilities(n);
+                if (nc != null && nc.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)) return line;
+            }
+            return line + "\n" + Ui.tr("A VPN está desligada: sem ela o Instagram pode não abrir.",
+                    "The VPN is off: Instagram may not open without it.", "La VPN está apagada: sin ella Instagram puede no abrir.");
+        } catch (RuntimeException e) {
+            return line;
+        }
+    }
+
+    private final Runnable hideLegend = () -> showLegend(false);
+
+    private void showLegend(boolean on) {
+        View box = legend.first;
+        ui.removeCallbacks(hideLegend);
+        box.animate().cancel();
+        if (on) {
+            box.setVisibility(View.VISIBLE);
+            box.animate().alpha(1f).setDuration(250).start();
+            ui.postDelayed(hideLegend, 9000);
+        } else {
+            box.animate().alpha(0f).setDuration(400).withEndAction(() -> box.setVisibility(View.GONE)).start();
+        }
+    }
+
+    /** OK held: the save sign's ring fills while the key is down (full at the moment a release saves). */
+    private final Runnable startFilling = () -> {
+        mark.set(Sign.SAVED);
+        mark.progress = 0;
+        mark.animate().cancel();
+        mark.setAlpha(1f);
+        filling = android.animation.ValueAnimator.ofFloat(0f, 1f).setDuration(400);
+        filling.addUpdateListener(a -> {
+            mark.progress = Math.min(0.999f, (float) a.getAnimatedValue());
+            mark.invalidate();
+        });
+        filling.start();
+    };
+
+    private void stopFilling(boolean saving) {
+        ui.removeCallbacks(startFilling);
+        if (filling != null) filling.cancel();
+        filling = null;
+        if (!saving) mark.animate().alpha(0f).setDuration(120).start();
+    }
+
+    private void showSaved(boolean ok) {
+        if (!ok) {
+            mark.animate().alpha(0f).setDuration(120).start();
+            return;
+        }
+        mark.progress = 1f;
+        mark.invalidate();
+        mark.animate().alpha(0f).setStartDelay(700).setDuration(300).withEndAction(() -> mark.animate().setStartDelay(0)).start();
+    }
+
+    /** What the reel is doing, over it: a play sign while you've paused it, a ring while it waits (shown after half a second). */
+    private void showState(int state) {
+        boolean on = state != -1 && onReels();
+        if (on && state == 2) {
+            if (played.getAlpha() < 1f && played.getTag() == null) {
+                played.setTag(1);
+                played.setScaleX(0.85f);
+                played.setScaleY(0.85f);
+                played.animate().cancel();
+                played.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(160).start();
+            }
+        } else if (played.getTag() != null) {
+            played.setTag(null);
+            played.animate().cancel();
+            played.animate().alpha(0f).setDuration(180).start();
+        }
+        long now = android.os.SystemClock.uptimeMillis();
+        if (on && state == 1) {
+            if (waitingSince == 0) waitingSince = now;
+            if (now - waitingSince > 500 && loading.getVisibility() != View.VISIBLE) {
+                loading.setVisibility(View.VISIBLE);
+                spin.start();
+            }
+        } else {
+            waitingSince = 0;
+            if (loading.getVisibility() == View.VISIBLE) {
+                spin.cancel();
+                loading.setVisibility(View.GONE);
+            }
+        }
+    }
+
+    /** A big heart over the reel for a moment: the like went through (filled), or was taken back (empty). */
+    private void showHeart(boolean liked) {
+        heart.set(liked ? Sign.HEART : Sign.UNHEART);
         heart.setScaleX(0.6f);
         heart.setScaleY(0.6f);
         heart.setAlpha(1f);
-        heart.animate().scaleX(1.15f).scaleY(1.15f).setDuration(220).withEndAction(() ->
+        heart.animate().cancel();
+        heart.animate().setStartDelay(0).scaleX(1.15f).scaleY(1.15f).setDuration(220).withEndAction(() ->
                 heart.animate().alpha(0f).setStartDelay(350).setDuration(300).start()).start();
     }
 
@@ -454,8 +742,18 @@ public class ReelsActivity extends Activity {
      */
     private void go(int dir) {
         android.util.DisplayMetrics m = getResources().getDisplayMetrics();
+        nudge.set(dir > 0 ? Sign.DOWN : Sign.UP);
+        float d = m.heightPixels * 0.03f * dir;
+        nudge.animate().cancel();
+        nudge.setAlpha(0.9f);
+        nudge.setTranslationY(-d);
+        nudge.animate().translationY(d).alpha(0f).setDuration(420).start();
+        showState(-1);   // the next reel's own state comes with the next report
         swipe(m.widthPixels / 2f, dir * m.heightPixels * 0.97f);
     }
+
+    private float queuedX, queuedDy;
+    private final Runnable queued = () -> swipe(queuedX, queuedDy);
 
     /**
      * A finger that carries the list a whole reel along, easing to a stop, before it lets go. The site's touch-end
@@ -466,7 +764,13 @@ public class ReelsActivity extends Activity {
      */
     private void swipe(float x, float dy) {
         long now = android.os.SystemClock.uptimeMillis();
-        if (now < dragUntil) return;
+        if (now < dragUntil) {   // pressed again mid-swipe: one more as soon as this one lets go (not lost, not piled up)
+            queuedX = x;
+            queuedDy = dy;
+            ui.removeCallbacks(queued);
+            ui.postAtTime(queued, dragUntil + 420);   // after the list has settled: a touch while it snaps is ignored
+            return;
+        }
         android.util.DisplayMetrics m = getResources().getDisplayMetrics();
         float y0 = dy > 0 ? m.heightPixels * 0.72f : m.heightPixels * 0.25f, y1 = y0 - dy, wx = x - web.getLeft();
         int steps = 15;   // 15 frames, a quarter of a second
@@ -527,6 +831,18 @@ public class ReelsActivity extends Activity {
 
     @Override public boolean dispatchKeyEvent(KeyEvent e) {
         int k = e.getKeyCode();
+        if (stuck && k != KeyEvent.KEYCODE_BACK) {   // the "no connection" panel: OK tries again, the rest waits
+            if ((k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER) && e.getAction() == KeyEvent.ACTION_UP) {
+                stuck = false;
+                retries = 0;
+                showStatus(Ui.tr("Conectando ao Instagram…", "Connecting to Instagram…", "Conectando con Instagram…"), null, true);
+                String cookies = CookieManager.getInstance().getCookie("https://www.instagram.com");
+                web.loadUrl(cookies != null && cookies.contains("sessionid=") ? START : LOGIN);
+            }
+            return k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER || k == KeyEvent.KEYCODE_DPAD_UP
+                    || k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT
+                    || super.dispatchKeyEvent(e);
+        }
         if (onReels()) pointer.setVisibility(View.GONE);
         boolean ok = k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER;
         if (onReels() && (k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_RIGHT
@@ -545,28 +861,32 @@ public class ReelsActivity extends Activity {
                 if (seeking) {
                     seeking = false;
                     web.evaluateJavascript("fmtvSeek(0)", null);
-                    note.animate().alpha(0f).setDuration(200).start();
+                    note.animate().setStartDelay(0).alpha(0f).setDuration(200).start();
+                } else if (k == KeyEvent.KEYCODE_DPAD_LEFT) {
+                    showLegend(legend.first.getVisibility() != View.VISIBLE || legend.first.getAlpha() < 1f);
                 } else if (k == KeyEvent.KEYCODE_DPAD_RIGHT) {
                     web.evaluateJavascript("fmtvLike()", r -> {
-                        if (r.contains("unliked")) showHeart("💔");
-                        else if (r.contains("liked")) showHeart("♥");
+                        if (r.contains("unliked")) showHeart(false);
+                        else if (r.contains("liked")) showHeart(true);
                     });
                 }
+            } else if (ok && down && e.getRepeatCount() == 0) {
+                ui.postDelayed(startFilling, 200);
             } else if (ok && !down && e.getEventTime() - e.getDownTime() > 600) {   // OK held: into Saved
-                web.evaluateJavascript("fmtvSave()", r -> say(r.contains("saved") ? Ui.tr("Salvo", "Saved", "Guardado")
-                        : Ui.tr("Não deu para salvar", "Couldn't save", "No se pudo guardar")));
+                stopFilling(true);
+                web.evaluateJavascript("fmtvSave()", null);   // the page tells back through saved()
             } else if (ok && !down) {
+                stopFilling(false);
                 long now = android.os.SystemClock.uptimeMillis();
+                toggle();
                 if (now - okAt < 400) {   // a second OK soon after the first: reels go on by themselves, or stop
                     okAt = 0;
-                    ui.removeCallbacks(pause);
                     auto = !auto;
                     web.evaluateJavascript("fmtvAuto=" + auto, null);
                     say(auto ? Ui.tr("Rolagem automática ligada", "Auto-scroll on", "Desplazamiento automático activado")
                             : Ui.tr("Rolagem automática desligada", "Auto-scroll off", "Desplazamiento automático desactivado"));
                 } else {
                     okAt = now;
-                    ui.postDelayed(pause, 400);
                 }
             }
             return true;
@@ -620,5 +940,131 @@ public class ReelsActivity extends Activity {
         ((android.view.ViewGroup) web.getParent()).removeView(web);
         web.destroy();
         super.onDestroy();
+    }
+
+    /** The few signs drawn over the reels, in one hand (Material's shapes on a 24-point grid): no font's emoji. */
+    static final class Sign extends View {
+        static final int HEART = 1, UNHEART = 2, PLAY = 3, DOWN = 4, UP = 5, SAVED = 6, LOADING = 7;
+        private final android.graphics.Paint fill = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG),
+                line = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG),
+                disc = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.Path heartPath = new android.graphics.Path(), playPath = new android.graphics.Path(),
+                markPath = new android.graphics.Path(), chevron = new android.graphics.Path();
+        private final android.graphics.RectF ring = new android.graphics.RectF(3, 3, 21, 21);
+        private int kind = HEART;
+        float progress;   // SAVED drawn as a ring filling up to it (0 to 1) while OK is held
+
+        Sign(android.content.Context c) {
+            super(c);
+            line.setStyle(android.graphics.Paint.Style.STROKE);
+            line.setStrokeCap(android.graphics.Paint.Cap.ROUND);
+            line.setStrokeJoin(android.graphics.Paint.Join.ROUND);
+            disc.setColor(0x80000000);
+            android.graphics.Path h = heartPath;
+            h.moveTo(12f, 21.35f);
+            h.lineTo(10.55f, 20.03f);
+            h.cubicTo(5.4f, 15.36f, 2f, 12.28f, 2f, 8.5f);
+            h.cubicTo(2f, 5.42f, 4.42f, 3f, 7.5f, 3f);
+            h.cubicTo(9.24f, 3f, 10.91f, 3.81f, 12f, 5.09f);
+            h.cubicTo(13.09f, 3.81f, 14.76f, 3f, 16.5f, 3f);
+            h.cubicTo(19.58f, 3f, 22f, 5.42f, 22f, 8.5f);
+            h.cubicTo(22f, 12.28f, 18.6f, 15.36f, 13.45f, 20.04f);
+            h.close();
+            h.offset(0, -0.2f);
+            playPath.moveTo(9.6f, 7.6f);
+            playPath.lineTo(9.6f, 16.4f);
+            playPath.lineTo(16.6f, 12f);
+            playPath.close();
+            markPath.moveTo(16f, 5f);
+            markPath.lineTo(8f, 5f);
+            markPath.cubicTo(7.2f, 5f, 6.6f, 5.6f, 6.6f, 6.4f);
+            markPath.lineTo(6.6f, 19.5f);
+            markPath.lineTo(12f, 16.8f);
+            markPath.lineTo(17.4f, 19.5f);
+            markPath.lineTo(17.4f, 6.4f);
+            markPath.cubicTo(17.4f, 5.6f, 16.8f, 5f, 16f, 5f);
+            markPath.close();
+            chevron.moveTo(6f, 9f);
+            chevron.lineTo(12f, 15f);
+            chevron.lineTo(18f, 9f);
+        }
+
+        void set(int k) {
+            if (k != kind) {
+                kind = k;
+                invalidate();
+            }
+        }
+
+        @Override protected void onDraw(android.graphics.Canvas c) {
+            float s = Math.min(getWidth(), getHeight());
+            c.save();
+            c.translate((getWidth() - s) / 2f, (getHeight() - s) / 2f);
+            c.scale(s / 24f, s / 24f);
+            fill.setShadowLayer(0.9f, 0, 0.25f, 0x99000000);
+            line.setShadowLayer(0.9f, 0, 0.25f, 0x99000000);
+            switch (kind) {
+                case HEART:
+                    fill.setColor(0xFFFF3040);
+                    c.drawPath(heartPath, fill);
+                    break;
+                case UNHEART:
+                    line.setColor(0xFFFFFFFF);
+                    line.setStrokeWidth(1.4f);
+                    c.drawPath(heartPath, line);
+                    break;
+                case PLAY:
+                    fill.clearShadowLayer();
+                    c.drawCircle(12, 12, 12, disc);
+                    fill.setColor(0xFFFFFFFF);
+                    c.drawPath(playPath, fill);
+                    break;
+                case SAVED:
+                    c.drawCircle(12, 12, 12, disc);
+                    line.clearShadowLayer();
+                    line.setStrokeWidth(1.6f);
+                    if (progress < 1f) {
+                        line.setColor(0x40FFFFFF);
+                        c.drawCircle(12, 12, 10.2f, line);
+                        line.setColor(0xFFFFFFFF);
+                        ring.set(1.8f, 1.8f, 22.2f, 22.2f);
+                        c.drawArc(ring, -90, 360 * progress, false, line);
+                        line.setStrokeWidth(1.4f);
+                        c.save();
+                        c.translate(12, 12);
+                        c.scale(0.62f, 0.62f);
+                        c.translate(-12, -12);
+                        c.drawPath(markPath, line);
+                        c.restore();
+                    } else {
+                        fill.clearShadowLayer();
+                        fill.setColor(0xFFFFFFFF);
+                        c.save();
+                        c.translate(12, 12);
+                        c.scale(0.62f, 0.62f);
+                        c.translate(-12, -12);
+                        c.drawPath(markPath, fill);
+                        c.restore();
+                    }
+                    break;
+                case DOWN:
+                case UP:
+                    if (kind == UP) c.rotate(180, 12, 12);
+                    line.setColor(0xFFFFFFFF);
+                    line.setStrokeWidth(2.4f);
+                    c.drawPath(chevron, line);
+                    break;
+                case LOADING:
+                    line.clearShadowLayer();
+                    line.setStrokeWidth(2f);
+                    line.setColor(0x33FFFFFF);
+                    c.drawCircle(12, 12, 9, line);
+                    line.setColor(0xE6FFFFFF);
+                    ring.set(3, 3, 21, 21);
+                    c.drawArc(ring, 0, 100, false, line);
+                    break;
+            }
+            c.restore();
+        }
     }
 }

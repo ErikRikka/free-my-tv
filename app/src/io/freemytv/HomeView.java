@@ -313,6 +313,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final Paint imageFill = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final Paint border = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint rim = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private float shelfFocus;   // how much the shelf row has focus (0 to 1): unfocused tiles dim with it
+    private Paint pagerCount;
+    private String pagerText = "";
+    private int pagerAt = -1, pagerOf = -1;
     private final Paint sheen = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint veil = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -748,7 +752,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         cardDimRight = Ui.text(Ui.medium, 21 * k, 0x99FFFFFF);
         cardDimRight.setTextAlign(Paint.Align.RIGHT);
         bigTemp = Ui.numbers(Ui.light, 100 * k, 0xFFFFFFFF);
-        hourPaint = Ui.numbers(Ui.medium, 22 * k, 0xADFFFFFF);
+        hourPaint = Ui.numbers(Ui.medium, 24 * k, 0xC7FFFFFF);
+        pagerCount = Ui.numbers(Ui.medium, 22 * k, 0xB3FFFFFF);
         hourPaint.setTextAlign(Paint.Align.CENTER);
         hourTemp = Ui.numbers(Ui.medium, 26 * k, 0xF2FFFFFF);
         hourTemp.setTextAlign(Paint.Align.CENTER);
@@ -1385,6 +1390,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             }
         }
         if (liftIndex >= 0 && liftIndex < shelf.size() && moveLift.value > 0.02f) top = liftIndex;
+        shelfFocus = Ui.clamp(most > 0.02f ? most : 0);
         for (int pass = 0; pass < 2; pass++) {
             for (int i = 0; i < shelf.size(); i++) {
                 if ((pass == 0) == (i == top)) continue;
@@ -1463,6 +1469,22 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             drawLogo(c, it, cell, s, 0);
         } else {
             if (it.tile != null) roundImage(c, it.tile, cell, r);
+        }
+        // Focus has to win over any brand's color from the sofa: the others step back, the focused one gets a white ring.
+        float dim = 0.34f * shelfFocus * (1 - fc);
+        if (dim > 0.005f) {
+            tileFill.setShader(null);
+            tileFill.setColor(Ui.alpha(0xFF000000, dim));
+            c.drawRoundRect(cell, r, r, tileFill);
+        }
+        if (fc > 0.01f && l < 0.02f) {
+            float gap = 5 * k * s, w = 3.5f * k * s;
+            tmp.set(cell.left - gap - w / 2, cell.top - gap - w / 2, cell.right + gap + w / 2, cell.bottom + gap + w / 2);
+            rim.setShader(null);
+            rim.setStrokeWidth(w);
+            rim.setColor(Ui.alpha(0xFFFFFFFF, 0.92f * fc));
+            c.drawRoundRect(tmp, r + gap + w / 2, r + gap + w / 2, rim);
+            rim.setStrokeWidth(2.5f * k);
         }
         if (it.pkg != null && it.pkg.contains("vpn")) {
             float dot = 9 * k * s, dx = cell.right - 22 * k * s, dy = cell.top + 22 * k * s;
@@ -1652,7 +1674,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         cardDim.setColor(tone(L_DIM, 0xADFFFFFF));
         cardDimRight.setColor(tone(L_FAINT, 0x99FFFFFF));
         bigTemp.setColor(drawerInk(1));
-        hourPaint.setColor(tone(L_DIM, 0xADFFFFFF));
+        hourPaint.setColor(tone(L_DIM, 0xC7FFFFFF));
         hourTemp.setColor(drawerInk(0.95f));
         pricePaint.setColor(drawerInk(0.95f));
         float titleBase = ROW_TITLE * k;
@@ -3020,13 +3042,20 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private void drawPager(Canvas c, float x, int index, float dy) {
         int n = cards.size();
         if (n < 2) return;
-        int first = Math.max(0, Math.min(index - 4, n - 9));
+        int first = Math.max(0, Math.min(index - 4, n - 9)), last = Math.min(n, first + 9);
         fill.setShader(null);
-        for (int i = first; i < Math.min(n, first + 9); i++) {
-            float alpha = Math.max(0.14f, 1 - Math.abs(i - index) * 0.22f);
+        for (int i = first; i < last; i++) {
+            float alpha = Math.max(0.2f, 1 - Math.abs(i - index) * 0.2f);
             fill.setColor(Ui.alpha(0xFFFFFFFF, alpha));
-            c.drawCircle(x + 6 * k + (i - first) * 22 * k, H_DOTS_Y * k + dy, 5 * k, fill);
+            c.drawCircle(x + 7 * k + (i - first) * 26 * k, H_DOTS_Y * k + dy, i == index ? 7 * k : 5.5f * k, fill);
         }
+        // and which of how many, in words a glance can take (built when it changes, not per frame)
+        if (index != pagerAt || n != pagerOf) {
+            pagerAt = index;
+            pagerOf = n;
+            pagerText = (index + 1) + " / " + n;
+        }
+        c.drawText(pagerText, x + 7 * k + (last - first - 1) * 26 * k + 26 * k, H_DOTS_Y * k + dy + 8 * k, pagerCount);
     }
 
     /** The whole description, as large as fits between the dots and the dock (25 down to 18 px). */

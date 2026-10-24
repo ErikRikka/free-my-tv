@@ -76,9 +76,13 @@ final class Backdrop {
 
     private static void scrims(Canvas c, Bitmap out) {
         float boost = Math.max(0, Math.min(0.3f, (luminance(out, 0, 0.22f, 0.5f, 0.62f) - 0.22f) * 1.1f));
+        // A poster with its own big lettering (most YouTube thumbnails) fights the title: the busier the text area,
+        // the darker, and the further right, its scrim.
+        float busy = Math.max(0, Math.min(0.24f, (contrast(out, 0, 0.08f, 0.62f, 0.55f) - 0.06f) * 2.2f));
+        boost = Math.min(0.32f, boost + busy);
         Paint scrim = new Paint(Paint.DITHER_FLAG);
         scrim.setShader(new LinearGradient(0, 0, W * 0.68f, 0,
-                new int[] {black(0.66f + boost), black(0.52f + boost * 0.8f), black(0.26f + boost * 0.4f), black(0.07f), 0},
+                new int[] {black(0.66f + boost), black(0.52f + boost * 0.8f), black(0.26f + boost * 0.4f + busy), black(0.07f + busy * 0.6f), 0},
                 new float[] {0, 0.25f, 0.55f, 0.8f, 1}, Shader.TileMode.CLAMP));
         c.drawRect(0, 0, W, H, scrim);
         // At the bottom, a faint scrim: the photo must show through the glass shelf (the glass provides the contrast).
@@ -248,6 +252,25 @@ final class Backdrop {
             }
         }
         return sum / count;
+    }
+
+    /** How much the light changes across an area (its standard deviation, 0 to about 0.5): lettering and edges score high. */
+    private static float contrast(Bitmap b, float x0, float y0, float x1, float y1) {
+        float sum = 0, sq = 0;
+        int count = 0;
+        for (int j = 0; j < 30; j++) {
+            for (int i = 0; i < 48; i++) {
+                int x = Math.round((x0 + (x1 - x0) * (i + 0.5f) / 48) * (b.getWidth() - 1));
+                int y = Math.round((y0 + (y1 - y0) * (j + 0.5f) / 30) * (b.getHeight() - 1));
+                int p = b.getPixel(x, y);
+                float l = (0.2126f * ((p >> 16) & 255) + 0.7152f * ((p >> 8) & 255) + 0.0722f * (p & 255)) / 255f;
+                sum += l;
+                sq += l * l;
+                count++;
+            }
+        }
+        float mean = sum / count;
+        return (float) Math.sqrt(Math.max(0, sq / count - mean * mean));
     }
 
     private static int black(float a) {
