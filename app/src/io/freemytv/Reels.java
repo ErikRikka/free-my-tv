@@ -17,7 +17,8 @@ import android.widget.Toast;
  * become touches, in one of two ways:
  * - Reels: Down the next reel, Up the one before, OK pause, Right like, Left back to the pointer (on the tabs).
  * - Cursor (to sign in, for dialogs and the rest): the arrows move a pointer, OK taps under it, keyboard keys included.
- * Clicking its Reels tab with the pointer switches to Reels; holding OK switches either way. Back is always Back.
+ * It opens on Reels (from the home screen), so the remote starts out scrolling them; clicking its Reels tab with the
+ * pointer switches back to that, and holding OK switches either way. Back is always Back.
  */
 final class Reels {
     private Reels() {}
@@ -26,7 +27,6 @@ final class Reels {
 
     /** The app in front, from the window changes the key service sees. */
     static volatile String front = "";
-    // The way picked last time (its windows don't say which screen they show): the pointer at first, to sign in.
     private static boolean reels, held;
     private static float x = -1, y = -1;
     private static View pointer;
@@ -37,8 +37,10 @@ final class Reels {
         if (p.contains("inputmethod") || p.equals("com.android.systemui")) return;   // the keyboard or a toast over the app
         if (p.equals(s.getPackageName()) && "android.view.View".equals(String.valueOf(cls))) return;   // our own pointer
         if (!p.equals(front)) AppLog.w("reels: in front " + p);
+        if (ours(p) && !p.equals(front)) reels = true;   // it opens on Reels (reelsIntent): the remote scrolls them
         front = p;
         showPointer(s, ours(p) && !reels);
+        if (ours(p)) warmTouch(s);
     }
 
     /** The app already in front when the service starts (it only hears of the ones that open after). */
@@ -52,14 +54,28 @@ final class Reels {
                         .matcher(adb.shell("dumpsys activity activities | grep mResumedActivity"));
                 if (m.find()) {
                     String pkg = m.group(1);
-                    main.post(() -> {
-                        if (front.isEmpty()) windowChanged(s, pkg, null);
+                    main.post(() -> {   // as it was left, not as if just opened
+                        if (!front.isEmpty()) return;
+                        front = pkg;
+                        AppLog.w("reels: in front " + pkg + " (already)");
+                        showPointer(s, ours(pkg) && !reels);
+                        if (ours(pkg)) warmTouch(s);
                     });
                 }
             } catch (Exception e) {
                 AppLog.w("reels: front app: " + e.getMessage());
             }
         });
+    }
+
+    static boolean opensOnReels(String pkg) {
+        return ours(pkg);
+    }
+
+    /** Instagram (or Lite) straight on its Reels. */
+    static android.content.Intent reelsIntent(String pkg) {
+        return new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.instagram.com/reels/"))
+                .setPackage(pkg).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
     }
 
     private static boolean ours(String pkg) {
@@ -99,7 +115,7 @@ final class Reels {
             if (down && e.getRepeatCount() == 0) {
                 DisplayMetrics m = s.getResources().getDisplayMetrics();
                 if (key == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                    tap(s, m.widthPixels * LIKE_X, m.heightPixels * LIKE_Y);
+                    if (INSTAGRAM.equals(front)) tap(s, m.widthPixels * LIKE_X, m.heightPixels * LIKE_Y);   // Lite's heart is elsewhere
                 } else if (key == KeyEvent.KEYCODE_DPAD_LEFT) {   // to the tabs on the left, with the pointer on Reels
                     reels = false;
                     x = m.widthPixels * 0.033f;
@@ -146,13 +162,27 @@ final class Reels {
         });
     }
 
+    /** Starts TouchServer ahead of the first press, so that one isn't slow either. */
+    private static void warmTouch(Context c) {
+        Context app = c.getApplicationContext();
+        TOUCH.execute(() -> {
+            if (touchOut != null) return;
+            try {
+                openTouch(app);
+            } catch (Exception e) {
+                AppLog.w("reels: touch server: " + e.getMessage());
+                touchOut = null;
+            }
+        });
+    }
+
     /** Starts TouchServer and waits for it to dial in on a port of ours, with a key only it was given. */
     private static void openTouch(Context app) throws Exception {
         try (java.net.ServerSocket listen = new java.net.ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1"))) {
             listen.setSoTimeout(5000);
             String key = Long.toHexString(new java.security.SecureRandom().nextLong()) + Long.toHexString(System.nanoTime());
             shell(app, "CLASSPATH=" + app.getApplicationInfo().sourceDir + " setsid nohup app_process /system/bin "
-                    + TouchServer.class.getName() + " " + listen.getLocalPort() + " " + key + " >/data/local/tmp/freemytv-touch.log 2>&1 &");
+                    + TouchServer.class.getName() + " " + listen.getLocalPort() + " " + key + " >/data/local/tmp/freemytv-touch.log 2>&1 & sleep 1");   // the session ending at once would take it along
             java.net.Socket server = listen.accept();
             server.setTcpNoDelay(true);
             touchOut = new java.io.OutputStreamWriter(server.getOutputStream());
@@ -166,7 +196,8 @@ final class Reels {
         for (int attempt = 0; attempt < 2; attempt++) {
             try {
                 if (adb == null) adb = Adb.connect(app, 0, null);
-                adb.shell(command);
+                String out = adb.shell(command).trim();
+                if (!out.isEmpty()) AppLog.w("reels: shell said: " + out);
                 return;
             } catch (Exception e) {
                 AppLog.w("reels: " + command + ": " + e.getMessage());
