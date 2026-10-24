@@ -84,6 +84,7 @@ final class HomeApps {
         {"netflix", "Netflix", "com.netflix.ninja", "E50914", "", "1"},
         {"youtube", "YouTube", "com.google.android.youtube.tv", "FF0033", "play", "1"},
         {"instagram", "Instagram", "com.instagram.android", "E1306C", "", "1"},
+        {"instagramlite", "Instagram Lite", "com.instagram.lite", "E1306C", "", "1"},
         {"prime", "Prime Video", "com.amazon.amazonvideo.livingroom", "1A98FF", "tint", "0.96"},
         {"disney", "Disney+", "com.disney.disneyplus", "1838C8", "", "1"},
         {"max", "Max", "com.wbd.stream", "6C3BE0", "", "1.32"},
@@ -165,6 +166,10 @@ final class HomeApps {
         List<String> custom = Prefs.shelf();
         if (custom != null && Prefs.addOnce("instagram", custom, "com.instagram.android", "com.google.android.youtube.tv",
                 launchIntent(c.getPackageManager(), "com.instagram.android") != null)) {
+            custom = Prefs.shelf();
+        }
+        if (custom != null && Prefs.addOnce("instagramlite", custom, "com.instagram.lite", "com.instagram.android",
+                launchIntent(c.getPackageManager(), "com.instagram.lite") != null)) {
             custom = Prefs.shelf();
         }
         if (custom != null) return custom;

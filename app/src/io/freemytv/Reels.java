@@ -22,7 +22,7 @@ import android.widget.Toast;
 final class Reels {
     private Reels() {}
 
-    static final String INSTAGRAM = "com.instagram.android";
+    static final String INSTAGRAM = "com.instagram.android", LITE = "com.instagram.lite";
 
     /** The app in front, from the window changes the key service sees. */
     static volatile String front = "";
@@ -38,11 +38,15 @@ final class Reels {
         if (p.equals(s.getPackageName()) && "android.view.View".equals(String.valueOf(cls))) return;   // our own pointer
         if (!p.equals(front)) AppLog.w("reels: in front " + p);
         front = p;
-        showPointer(s, INSTAGRAM.equals(p) && !reels);
+        showPointer(s, ours(p) && !reels);
+    }
+
+    private static boolean ours(String pkg) {
+        return INSTAGRAM.equals(pkg) || LITE.equals(pkg);
     }
 
     static boolean onKey(AccessibilityService s, KeyEvent e) {
-        if (!INSTAGRAM.equals(front)) return false;
+        if (!ours(front)) return false;
         int key = e.getKeyCode();
         boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
         if (key == KeyEvent.KEYCODE_DPAD_CENTER || key == KeyEvent.KEYCODE_ENTER) {
@@ -59,7 +63,7 @@ final class Reels {
                 } else {
                     tap(s, x, y);
                     DisplayMetrics m = s.getResources().getDisplayMetrics();
-                    if (x < m.widthPixels * 0.07f && Math.abs(y - m.heightPixels * REELS_TAB) < m.heightPixels * 0.04f) {
+                    if (INSTAGRAM.equals(front) && x < m.widthPixels * 0.07f && Math.abs(y - m.heightPixels * REELS_TAB) < m.heightPixels * 0.04f) {
                         reels = true;   // its Reels tab: from now on the arrows go through the reels
                         showPointer(s, false);
                     }
