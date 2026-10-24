@@ -64,6 +64,12 @@ public class ReelsActivity extends Activity {
             // Double OK: the next reel when this one ends (they loop on the site, so near the end rather than 'ended').
             + "window.fmtvAuto=false;document.addEventListener('timeupdate',function(e){var v=e.target;if(!fmtvAuto||v!==current()[1])return;"
             + "if(v.currentTime<1)v.__fmtvNext=0;if(v.duration&&v.currentTime>v.duration-0.4&&!v.__fmtvNext){v.__fmtvNext=1;fmtvMove(1);}},true);"
+            // The site keeps the videos of reels around the current one loaded, each holding one of the TV's few video
+            // decoders, and after a few reels a new one can't start: all but the current one and its neighbours let go.
+            + "function fmtvRelease(){var c=current()[1];if(!c)return;var vs=[].slice.call(document.querySelectorAll('video'))"
+            + ".sort(function(a,b){return a.getBoundingClientRect().top-b.getBoundingClientRect().top;}),i=vs.indexOf(c);"
+            + "vs.forEach(function(v,j){if(Math.abs(j-i)>1&&(v.getAttribute('src')||v.currentSrc)){v.pause();v.removeAttribute('src');v.load();}});}"
+            + "setInterval(fmtvRelease,1500);"
             // What's on screen, for the assistant: author, music, caption.
             + "setInterval(function(){var v=current()[1];if(!v)return;var el=v.parentElement;FMTV.reel(location.href,(el.innerText||'').slice(0,600));},2000);"
             + "window.fmtvToggle=function(){var v=current()[1];if(!v)return;v.muted=false;if(v.paused)v.play();else v.pause();};"
