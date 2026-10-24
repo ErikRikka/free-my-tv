@@ -119,7 +119,7 @@ final class Live {
                 .put("parameters", new JSONObject().put("type", "object").put("properties", new JSONObject())));
         JSONObject pcm = new JSONObject().put("type", "audio/pcm").put("rate", RATE);
         return new JSONObject().put("type", "realtime")
-                .put("instructions", Brain.system(context) + " Это живой голосовой разговор: говори естественно, с интонацией, как "
+                .put("instructions", Brain.system(context) + ReelsActivity.nowShowing(context) + " Это живой голосовой разговор: говори естественно, с интонацией, как "
                         + "человек, коротко, не повторяй вопрос. Если тебя перебили, не извиняйся, просто слушай.")
                 .put("audio", new JSONObject()
                         .put("input", new JSONObject().put("format", pcm)

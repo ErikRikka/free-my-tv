@@ -17,7 +17,8 @@ import android.webkit.WebViewClient;
 /**
  * Instagram's Reels on the TV, through its website. The phone apps play reels with the TV's VP9 decoder, which turns many
  * of them into smears; here the page is told the TV can't play VP9, AV1 or HEVC, so Instagram sends H.264, which it plays
- * well. The remote works as on any TV app: Up and Down go through the reels, Right likes, OK pauses, Back leaves. Not signed in, it
+ * well. The remote works as on any TV app: Up and Down go through the reels, Right likes (held: saves), OK pauses (twice:
+ * the reels go on by themselves), Back leaves; the assistant (the mic button) knows which reel is on screen. Not signed in, it
  * opens on the sign-in page; off the reels the arrows move a pointer and OK taps under it (fields, buttons, the
  * "I'm not a robot" box).
  */
@@ -52,12 +53,25 @@ public class ReelsActivity extends Activity {
             + "window.fmtvLike=function(){var v=current()[1];if(!v)return 'none';for(var el=v;el;el=el.parentElement){"
             + "if(el.querySelector('svg[aria-label=\\\"Unlike\\\"]'))return 'already';"
             + "var h=el.querySelector('svg[aria-label=\\\"Like\\\"]');if(h){(h.closest('[role=button],button')||h).click();return 'liked';}}return 'none';};"
+            // Long Right: into Saved, the way the site's own bookmark does it (its media id from the reel's code in the address).
+            + "window.fmtvSave=function(){var m=location.pathname.match(/\\/reels?\\/([\\w-]+)/);if(!m)return Promise.resolve('none');"
+            + "var a='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_',id=BigInt(0);"
+            + "for(var i=0;i<m[1].length;i++)id=id*BigInt(64)+BigInt(a.indexOf(m[1][i]));"
+            + "var t=(document.cookie.match(/csrftoken=([^;]+)/)||[])[1]||'';"
+            + "return fetch('/api/v1/web/save/'+id+'/save/',{method:'POST',credentials:'include',headers:{'x-csrftoken':t,"
+            + "'x-ig-app-id':'936619743392459','x-requested-with':'XMLHttpRequest','content-type':'application/x-www-form-urlencoded'}})"
+            + ".then(function(r){return r.ok?'saved':'error '+r.status;},function(e){return 'error';});};"
+            // Double OK: the next reel when this one ends (they loop on the site, so near the end rather than 'ended').
+            + "window.fmtvAuto=false;document.addEventListener('timeupdate',function(e){var v=e.target;if(!fmtvAuto||v!==current()[1])return;"
+            + "if(v.currentTime<1)v.__fmtvNext=0;if(v.duration&&v.currentTime>v.duration-0.4&&!v.__fmtvNext){v.__fmtvNext=1;fmtvMove(1);}},true);"
+            // What's on screen, for the assistant: author, music, caption.
+            + "setInterval(function(){var v=current()[1];if(!v)return;var el=v.parentElement;FMTV.reel(location.href,(el.innerText||'').slice(0,600));},2000);"
             + "window.fmtvToggle=function(){var v=current()[1];if(!v)return;v.muted=false;if(v.paused)v.play();else v.pause();};"
             + "})();";
 
     private WebView web;
     private View pointer;
-    private android.widget.TextView heart;
+    private android.widget.TextView heart, note;
     private float px = -1, py = -1;
     private volatile boolean typing, dialog;
 
@@ -92,6 +106,10 @@ public class ReelsActivity extends Activity {
             @JavascriptInterface public void dialog(boolean on) {
                 dialog = on;
             }
+
+            @JavascriptInterface public void reel(String url, String text) {
+                showing(url, text);
+            }
         }, "FMTV");
         web.setWebChromeClient(new WebChromeClient());
         web.setWebViewClient(new WebViewClient() {
@@ -100,8 +118,18 @@ public class ReelsActivity extends Activity {
             }
 
             @Override public void onPageFinished(WebView v, String url) {
+                if (url.startsWith("https://")) retries = 0;
                 v.evaluateJavascript(SCRIPT, null);
                 CookieManager.getInstance().flush();
+            }
+
+            // A page that didn't load (QUIC, Chromium's UDP way, gets cut off on some networks): again in a moment;
+            // after one failure Chromium goes over plain TCP.
+            @Override public void onReceivedError(WebView v, android.webkit.WebResourceRequest r, android.webkit.WebResourceError err) {
+                if (!r.isForMainFrame() || retries >= 5) return;
+                retries++;
+                String url = r.getUrl().toString();
+                ui.postDelayed(() -> v.loadUrl(url), 1500L * retries);
             }
 
             @Override public boolean shouldOverrideUrlLoading(WebView v, android.webkit.WebResourceRequest r) {
@@ -137,6 +165,19 @@ public class ReelsActivity extends Activity {
         heart.setAlpha(0f);
         root.addView(heart, new android.widget.FrameLayout.LayoutParams(android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
                 android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.Gravity.CENTER));
+        note = new android.widget.TextView(this);
+        note.setTextColor(Color.WHITE);
+        note.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, dm.heightPixels * 0.035f);
+        note.setPadding(dm.heightPixels / 40, dm.heightPixels / 80, dm.heightPixels / 40, dm.heightPixels / 80);
+        android.graphics.drawable.GradientDrawable pill = new android.graphics.drawable.GradientDrawable();
+        pill.setColor(0xCC1E1E22);
+        pill.setCornerRadius(dm.heightPixels * 0.05f);
+        note.setBackground(pill);
+        note.setAlpha(0f);
+        android.widget.FrameLayout.LayoutParams np = new android.widget.FrameLayout.LayoutParams(android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.Gravity.TOP | android.view.Gravity.CENTER_HORIZONTAL);
+        np.topMargin = dm.heightPixels / 12;
+        root.addView(note, np);
         int size = Math.round(getResources().getDisplayMetrics().heightPixels * 0.035f);
         root.addView(pointer, new android.widget.FrameLayout.LayoutParams(size, size));
         pointer.setVisibility(View.GONE);
@@ -149,6 +190,51 @@ public class ReelsActivity extends Activity {
     private boolean onReels() {
         String url = web.getUrl();
         return !typing && !dialog && url != null && url.contains("instagram.com/reel");
+    }
+
+    private final android.os.Handler ui = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable pause = () -> web.evaluateJavascript("fmtvToggle()", null);
+    private boolean auto;
+    private long okAt;
+    private int retries;
+
+    /** A line on screen for a moment. */
+    private void say(String text) {
+        note.setText(text);
+        note.animate().cancel();
+        note.setAlpha(1f);
+        note.animate().alpha(0f).setStartDelay(1600).setDuration(400).start();
+    }
+
+    // MARK: - What's on screen, for the assistant (Live.session reads it): a file, since it lives in another process.
+
+    private long shownAt;
+
+    private void showing(String url, String text) {
+        long now = System.currentTimeMillis();
+        if (now - shownAt < 1500) return;
+        shownAt = now;
+        try {
+            org.json.JSONObject o = new org.json.JSONObject().put("url", url).put("text", text).put("at", now);
+            java.nio.file.Files.write(new java.io.File(getFilesDir(), "reel-now.json").toPath(),
+                    o.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** The reel on screen right now, in a few words for the assistant's instructions; empty if Reels isn't open. */
+    static String nowShowing(android.content.Context c) {
+        try {
+            java.io.File f = new java.io.File(c.getFilesDir(), "reel-now.json");
+            org.json.JSONObject o = new org.json.JSONObject(new String(java.nio.file.Files.readAllBytes(f.toPath()),
+                    java.nio.charset.StandardCharsets.UTF_8));
+            if (System.currentTimeMillis() - o.optLong("at") > 8000) return "";
+            return " Сейчас на экране ролик Instagram Reels (" + o.optString("url") + "). Его текст на экране (автор, музыка, подпись, "
+                    + "счётчики): " + o.optString("text").replace('\n', ' ') + ". Если спрашивают про «этот ролик», «эту песню», "
+                    + "«кто это», отвечай про него; песню называй по строке с музыкой, при сомнении поищи через web_search.";
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     /** A big heart over the reel for a moment: the like went through. */
@@ -216,16 +302,33 @@ public class ReelsActivity extends Activity {
     @Override public boolean dispatchKeyEvent(KeyEvent e) {
         int k = e.getKeyCode();
         if (onReels()) pointer.setVisibility(View.GONE);
-        if (onReels() && (k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_RIGHT
-                || k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER)) {
-            if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
-                web.evaluateJavascript(SCRIPT, null);
-                if (k == KeyEvent.KEYCODE_DPAD_RIGHT) web.evaluateJavascript("fmtvLike()", r -> {
-                    if (!r.contains("none")) showHeart();
-                });
-                else if (k == KeyEvent.KEYCODE_DPAD_DOWN) web.evaluateJavascript("fmtvMove(1)", null);
-                else if (k == KeyEvent.KEYCODE_DPAD_UP) web.evaluateJavascript("fmtvMove(-1)", null);
-                else web.evaluateJavascript("fmtvToggle()", null);
+        boolean ok = k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER;
+        if (onReels() && (k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_RIGHT || ok)) {
+            boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
+            if (down && e.getRepeatCount() == 0) web.evaluateJavascript(SCRIPT, null);
+            if (k == KeyEvent.KEYCODE_DPAD_DOWN && down && e.getRepeatCount() == 0) web.evaluateJavascript("fmtvMove(1)", null);
+            else if (k == KeyEvent.KEYCODE_DPAD_UP && down && e.getRepeatCount() == 0) web.evaluateJavascript("fmtvMove(-1)", null);
+            else if (k == KeyEvent.KEYCODE_DPAD_RIGHT && !down) {
+                // Held (TCL's remote sends no repeats, so by how long): into Saved; a press: a like.
+                if (e.getEventTime() - e.getDownTime() > 600) {
+                    web.evaluateJavascript("fmtvSave()", r -> say(r.contains("saved") ? "Сохранено" : "Не получилось сохранить"));
+                } else {
+                    web.evaluateJavascript("fmtvLike()", r -> {
+                        if (!r.contains("none")) showHeart();
+                    });
+                }
+            } else if (ok && down && e.getRepeatCount() == 0) {
+                long now = android.os.SystemClock.uptimeMillis();
+                if (now - okAt < 350) {   // a second OK soon after the first: reels go on by themselves, or stop
+                    okAt = 0;
+                    ui.removeCallbacks(pause);
+                    auto = !auto;
+                    web.evaluateJavascript("fmtvAuto=" + auto, null);
+                    say(auto ? "Автолистание включено" : "Автолистание выключено");
+                } else {
+                    okAt = now;
+                    ui.postDelayed(pause, 350);
+                }
             }
             return true;
         }
