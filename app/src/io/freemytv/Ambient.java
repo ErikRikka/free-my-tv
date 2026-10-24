@@ -57,6 +57,7 @@ final class Ambient {
 
     void start() {
         if (on) return;
+        if (audio.isMusicActive()) return;   // something already plays (music on the TV itself): no fire on top of it
         try {
             if (current == null) {
                 current = player();

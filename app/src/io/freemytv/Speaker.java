@@ -176,6 +176,10 @@ final class Speaker {
                 .setAudioFormat(new AudioFormat.Builder().setSampleRate(RATE).setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                         .setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
                 .setBufferSizeInBytes(Math.max(size * 4, RATE * 2)).setTransferMode(AudioTrack.MODE_STREAM).build();
+        if (stopped) {   // released before the player got here: nothing would release this one later
+            track.release();
+            return;
+        }
         track.play();
         try {
             while (!stopped) {

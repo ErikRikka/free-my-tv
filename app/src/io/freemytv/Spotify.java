@@ -34,7 +34,8 @@ final class Spotify {
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Listener listener;
     private volatile String token;
-    private volatile long tokenUntil;
+    private volatile long tokenUntil, quietUntil;
+    private volatile int failures;
     private volatile boolean busy, running;
     private String artUrl = "";
 
@@ -71,16 +72,20 @@ final class Spotify {
     }
 
     private void fetch() {
-        if (busy) return;
+        if (busy || System.currentTimeMillis() < quietUntil) return;
         busy = true;
         io.execute(() -> {
             boolean changed;
             try {
                 changed = read();
+                failures = 0;
             } catch (Exception e) {
                 AppLog.w("spotify: " + e.getMessage());
                 changed = playing;
                 playing = false;
+                // failing again and again (a revoked token, no network): wait longer each time, up to half an hour
+                failures++;
+                quietUntil = System.currentTimeMillis() + Math.min(30 * 60_000L, EVERY << Math.min(failures, 8));
             } finally {
                 busy = false;
             }

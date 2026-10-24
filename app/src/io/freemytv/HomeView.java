@@ -159,7 +159,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final RectF topCapsule = new RectF(), panelRect = new RectF(), pillRect = new RectF();
     private final Spring[] topFocus = new Spring[TOP_COUNT];
     private final RectF[] topRects = new RectF[TOP_COUNT];
-    private final boolean[] cardLiked = new boolean[3];
     private String feedKey;
     private long shownAt;       // when the shown pick appeared
     private long lastKeyAt = SystemClock.uptimeMillis();
@@ -403,6 +402,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             updatePalette();
             checkNight(true);
             updatePicks();      // three new ones every hour
+            String sleep = sleepLabel(SleepTimer.left(getContext()));   // "Sleep in N min" counts down, and ends
+            if (!lightButtons.isEmpty() && !sleep.equals(lightButtons.get(0).label)) {
+                makeLightButtons();
+                invalidate();
+            }
             handler.postDelayed(this, 15_000);
         }
     };
@@ -3029,7 +3033,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private StaticLayout plotLayout(String text, float shift) {
         String plot = text == null ? "" : text.replaceAll("\\s+", " ").trim();
         if (plot.isEmpty()) return null;
-        float room = (L_PLATTER_TOP - 36 - H_PLOT_TOP - (Spotify.configured() ? 90 : 0)) * k - shift;
+        float room = (L_PLATTER_TOP - 36 - H_PLOT_TOP - (npText.isEmpty() ? 0 : 90)) * k - shift;
         StaticLayout l = null;
         for (float size = 25; size >= 18; size -= 1) {
             hPlot.setTextSize(size * k);
@@ -3149,75 +3153,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float sw = Symbols.width(getContext(), symbol, size);
         Symbols.draw(getContext(), c, symbol, x + sw / 2, base - Ui.halfCap(lWeather), size, lWeather.getColor());
         c.drawText(weatherLine, x + sw + 16 * k, base, lWeather);
-    }
-
-    /**
-     * Recommendation card: the title's photo (already at the focused card size, so it stays sharp), rounded corners and
-     * a soft shadow; when focused, it grows 5%, rises and lights up its border. Below it, the title (and on the large
-     * card, genre · runtime · service).
-     */
-    private void drawLightCard(Canvas c, int i) {
-        RectF base = cardRects[i];
-        Recs.Pick p = i < cards.size() ? cards.get(i) : null;
-        float v = cardFocus[i].value, f = Ui.clamp(v), s = 1 + 0.05f * v;
-        float bw = base.width(), bh = base.height(), r0 = 18 * k;
-        float cx = base.centerX(), cy = base.centerY() - 6 * k * v;
-        cell.set(cx - bw * s / 2, cy - bh * s / 2, cx + bw * s / 2, cy + bh * s / 2);
-        float r = r0 * s;
-        c.save();
-        c.translate(cx, cy);
-        c.scale(s, s);
-        tmp.set(-bw / 2, -bh / 2, bw / 2, bh / 2);
-        tmp.offset(0, (10 + 14 * f) * k);
-        shadowDeep.setColor(Ui.alpha(0xFF000000, tone(0.14f, 0.32f) + tone(0.2f, 0.28f) * f));
-        shadows.draw(c, tmp, r0, DEEP_BLUR * k, shadowDeep);
-        c.restore();
-        Backdrop b = p == null ? null : recs.backdrop(p);
-        Bitmap img = b == null ? null : (i == 0 ? b.wide : b.tall);
-        if (img != null) {
-            roundImage(c, img, cell, r);
-        } else {
-            fill.setShader(null);
-            fill.setColor(tone(0xFFDADADF, 0xFF2C2C2E));
-            c.drawRoundRect(cell, r, r, fill);
-        }
-        if (f > 0.01f) {
-            if (lightSheens.length != cardRects.length) {
-                lightSheens = new LinearGradient[cardRects.length];
-                lightRims = new LinearGradient[cardRects.length];
-                lightShaderW = new float[cardRects.length];
-            }
-            if (lightSheens[i] == null || lightShaderW[i] != bw) {
-                lightSheens[i] = new LinearGradient(-bw / 2, -bh / 2, 0, bh / 2, 0x38FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP);
-                lightRims[i] = new LinearGradient(0, -bh / 2, 0, bh / 2, 0xE6FFFFFF, 0x59FFFFFF, Shader.TileMode.CLAMP);
-                lightShaderW[i] = bw;
-            }
-            int alpha = Math.round(255 * f);
-            c.save();
-            c.translate(cx, cy);
-            c.scale(s, s);
-            tmp.set(-bw / 2, -bh / 2, bw / 2, bh / 2);
-            sheen.setShader(lightSheens[i]);
-            sheen.setAlpha(alpha);
-            c.drawRoundRect(tmp, r0, r0, sheen);
-            sheen.setAlpha(255);
-            rim.setShader(lightRims[i]);
-            rim.setAlpha(alpha);
-            rim.setStrokeWidth(2.5f * k / s);
-            c.drawRoundRect(tmp, r0, r0, rim);
-            rim.setStrokeWidth(2.5f * k);
-            rim.setAlpha(255);
-            c.restore();
-        }
-        if (p == null) return;
-        fitPaint.set(lCardTitle);
-        float heart = cardLiked[i] ? lCardTitle.measureText("♥ ") : 0;
-        if (heart > 0) c.drawText("♥ ", base.left, base.bottom + 46 * k, lCardTitle);
-        c.drawText(TextUtils.ellipsize(p.title, fitPaint, bw - heart, TextUtils.TruncateAt.END).toString(), base.left + heart, base.bottom + 46 * k, lCardTitle);
-        if (i == 0 && p.meta != null && !p.meta.isEmpty()) {
-            fitPaint.set(lCardMeta);
-            c.drawText(TextUtils.ellipsize(p.meta, fitPaint, bw, TextUtils.TruncateAt.END).toString(), base.left, base.bottom + 80 * k, lCardMeta);
-        }
     }
 
     /** The glass capsule at the top right: the time, the weather and the icon buttons (focused: a white circle). */

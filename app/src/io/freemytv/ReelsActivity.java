@@ -93,8 +93,9 @@ public class ReelsActivity extends Activity {
             + "if(!item.parentElement)return;[].forEach.call(item.parentElement.children,function(c){if(c!==item)c.style.display='none';});"
             + "[].forEach.call(el.querySelectorAll('div,[role=button],button'),function(b){if(b.innerText==='Follow'&&b.children.length<3)b.style.display='none';});"
             + "el.__fmtvTidy=1;el.__fmtvHeart=item;}"
-            // the heart level with the author's name, a little lower (its row moves with the caption's length: measured each time)
-            + "var h=el.__fmtvHeart,au=[].find.call(el.querySelectorAll('a[href]'),function(a){return /^\\/[^\\/]+\\/reels\\/$/.test(a.getAttribute('href'));});"
+            // the heart level with the author's name, a little lower (its row moves with the caption's length: measured each time;
+            // the profile link may end in "?hl=en", the page's language)
+            + "var h=el.__fmtvHeart,au=[].find.call(el.querySelectorAll('a[href]'),function(a){return /^\\/[^\\/?]+\\/reels\\/(\\?.*)?$/.test(a.getAttribute('href'));});"
             + "if(h&&au){var hr=h.getBoundingClientRect(),ar=au.getBoundingClientRect(),now=h.__fmtvShift||0;"
             + "var dy=Math.round(ar.top+ar.height/2-(hr.top-now+hr.height/2))+10;if(dy!==now){h.__fmtvShift=dy;h.style.transform='translateY('+dy+'px)';}}"
             // The caption already holds its text (a line of it shown, then "… more"): two lines of it, "… more" hidden, set
@@ -334,6 +335,8 @@ public class ReelsActivity extends Activity {
     private volatile long reloadedAt;
     private int reloads;
     private long dragUntil;
+    private int streak, streakKey;
+    private long streakAt;
     private boolean failed;
     private volatile boolean resumed;
 
@@ -532,7 +535,14 @@ public class ReelsActivity extends Activity {
         if (!onReels() && (arrow || k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER)) {
             pointer.setVisibility(View.VISIBLE);
             if (e.getAction() == KeyEvent.ACTION_DOWN) {
-                if (arrow) movePointer(k, e.getRepeatCount());
+                if (arrow) {
+                    // TCL's remote sends no repeats while a key is held: quick presses of one arrow count as holding it
+                    long now = android.os.SystemClock.uptimeMillis();
+                    streak = k == streakKey && now - streakAt < 350 ? streak + 1 : 0;
+                    streakKey = k;
+                    streakAt = now;
+                    movePointer(k, Math.max(e.getRepeatCount(), streak));
+                }
                 else if (e.getRepeatCount() == 0) tap();
             }
             return true;

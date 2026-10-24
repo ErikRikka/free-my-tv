@@ -78,7 +78,8 @@ final class Memory {
         if (f.isEmpty()) return "Нечего запоминать.";
         JSONObject m = load(c);
         JSONArray facts = list(m, "facts");
-        for (int i = 0; i < facts.length(); i++) if (facts.optString(i).equalsIgnoreCase(f)) return "Это уже есть в памяти.";
+        String same = plain(f);   // the same fact written a little differently isn't kept twice
+        for (int i = 0; i < facts.length(); i++) if (plain(facts.optString(i)).equals(same)) return "Это уже есть в памяти.";
         facts.put(f);
         while (facts.length() > KEPT) facts.remove(0);
         try {
@@ -119,6 +120,10 @@ final class Memory {
         StringBuilder s = new StringBuilder("Из памяти:");
         for (String f : found) s.append("\n- ").append(f);
         return s.toString();
+    }
+
+    private static String plain(String fact) {
+        return fact.toLowerCase(Locale.ROOT).replace('ё', 'е').replaceAll("[^\\p{L}\\p{N}]+", " ").trim();
     }
 
     /** Forgets the facts that mention what, or everything for "всё". */

@@ -549,6 +549,8 @@ final class Recs {
     }
 
     /** "КП 7.8 · IMDb 8.1" (with a Kinopoisk key; cached two weeks), else TMDB's own rating. */
+    private static volatile long kinopoiskQuietUntil;
+
     private String rating(JSONObject o) {
         String imdb = o.optString("imdb_id", "");
         JSONObject ext = o.optJSONObject("external_ids");
@@ -557,12 +559,14 @@ final class Recs {
         if (!kpKey.isEmpty() && imdb.startsWith("tt")) {
             String saved = ratings.getString(imdb, null);
             long now = System.currentTimeMillis();
-            if (saved == null || now - ratings.getLong(imdb + "@", 0) > 14 * 24 * 3600_000L) {
+            if ((saved == null || now - ratings.getLong(imdb + "@", 0) > 14 * 24 * 3600_000L) && now > kinopoiskQuietUntil) {
                 try {
                     saved = kinopoisk(kpKey, imdb);
                     ratings.edit().putString(imdb, saved).putLong(imdb + "@", now).apply();
                 } catch (Exception e) {
                     AppLog.w("kinopoisk: " + e.getMessage());
+                    // the free key's daily quota (402) or its rate limit (429): not asked again for an hour
+                    if (String.valueOf(e.getMessage()).matches(".*HTTP (402|429).*")) kinopoiskQuietUntil = now + 3600_000L;
                 }
             }
             if (saved != null && !saved.isEmpty()) return saved;
@@ -1010,19 +1014,10 @@ final class Recs {
     }
 
     /**
-     * KINO.WATCH's own four lists, taken in turn: new movies, new shows, popular shows, popular movies (no repeats). Your
-     * bookmark folders' names go to the log, in case a list should come from one of them instead.
+     * KINO.WATCH's own four lists, taken in turn: new movies, new shows, popular shows, popular movies (no repeats).
      */
     private List<Pick> kinowatch() throws Exception {
         String token = kinopubToken();
-        try {
-            JSONArray folders = optItems(token, "/v1/bookmarks");
-            StringBuilder names = new StringBuilder();
-            for (int f = 0; folders != null && f < folders.length(); f++) names.append(f == 0 ? "" : ", ").append(folders.getJSONObject(f).optString("title"));
-            AppLog.w("kino.watch bookmark folders: " + names);
-        } catch (IOException e) {
-            AppLog.w("kino.watch bookmarks: " + e.getMessage());
-        }
         String[][] lists = {
                 {"/v1/items/fresh?type=movie&perpage=20", "New"},
                 {"/v1/items/fresh?type=serial&perpage=20", "New"},
@@ -1320,7 +1315,11 @@ final class Recs {
             for (String line; (line = r.readLine()) != null; ) {
                 String[] f = line.split("#")[0].trim().split("\\s+");
                 if (f.length != 2) continue;
-                (f[0].equals("fox") ? foxes : squirrels).add(Integer.parseInt(f[1]));
+                try {
+                    (f[0].equals("fox") ? foxes : squirrels).add(Integer.parseInt(f[1]));
+                } catch (NumberFormatException e) {
+                    AppLog.w("photos.txt: skipped \"" + line + "\"");
+                }
             }
         }
         java.util.Collections.shuffle(squirrels);

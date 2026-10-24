@@ -52,6 +52,7 @@ final class Whisper {
             if (split < 0 || !text.startsWith("HTTP/1.1 200")) throw new IOException("whisper: " + text.split("\r\n")[0]);
             String json = text.substring(split + 4);
             int a = json.indexOf('{'), b = json.lastIndexOf('}');
+            if (a < 0 || b < a) throw new IOException("whisper: ответ не разобран");
             return new JSONObject(json.substring(a, b + 1)).optString("text", "").trim();
         } catch (org.json.JSONException e) {
             throw new IOException("whisper: ответ не разобран");

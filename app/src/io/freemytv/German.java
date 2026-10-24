@@ -133,6 +133,26 @@ final class German {
             case "Disney and Globoplay: the TV itself controls those buttons.": return "Disney und Globoplay: Diese Tasten steuert der Fernseher selbst.";
             case "YouTube, Prime Video and Google Play: the TV itself controls those buttons.": return "YouTube, Prime Video und Google Play: Diese Tasten steuert der Fernseher selbst.";
             case "These are the TCL remote's buttons: on this TV, the buttons work as they always did.": return "Das sind die Tasten der TCL-Fernbedienung: Auf diesem Fernseher funktionieren sie wie immer.";
+            case "Picture": return "Bild";
+            case "Watch": return "Ansehen";
+            case "Tomorrow": return "Morgen";
+            case "Popular": return "Beliebt";
+            case "Trending": return "Im Trend";
+            case "For you": return "Für dich";
+            case "Bookmarked": return "Gemerkt";
+            case "New": return "Neu";
+            case "just now": return "gerade eben";
+            case "New episodes: ": return "Neue Folgen: ";
+            case "Continue watching": return "Weiterschauen";
+            case " on ": return " auf ";
+            case "Sleep timer off": return "Sleep-Timer aus";
+            case "Sleep timer off.": return "Sleep-Timer aus.";
+            case "Sleep in ": return "Aus in ";
+            case "The TV will sleep in ": return "Der Fernseher geht aus in ";
+            case " min": return " Min.";
+            case " min.": return " Min.";
+            case "Liked: picks will start from it.": return "Gemerkt: Die Vorschläge richten sich danach.";
+            case "Removed from liked.": return "Aus den Favoriten entfernt.";
             default:
                 if (english.startsWith("Free My TV is on: new home screen and screensaver, ")) {
                     return "Free My TV ist an: neuer Startbildschirm und Bildschirmschoner, "

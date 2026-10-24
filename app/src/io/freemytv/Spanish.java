@@ -120,6 +120,31 @@ final class Spanish {
             case "Disney and Globoplay: the TV itself controls those buttons.": return "Disney y Globoplay: el propio TV controla esos botones.";
             case "YouTube, Prime Video and Google Play: the TV itself controls those buttons.": return "YouTube, Prime Video y Google Play: el propio TV controla esos botones.";
             case "These are the TCL remote's buttons: on this TV, the buttons work as they always did.": return "Estos son los botones del control de TCL: en este TV, los botones funcionan como siempre.";
+            case "Picture": return "Imagen";
+            case "Watch": return "Ver";
+            case "Tomorrow": return "Mañana";
+            case "Popular": return "Popular";
+            case "Trending": return "Tendencias";
+            case "For you": return "Para ti";
+            case "Bookmarked": return "Guardado";
+            case "New": return "Nuevo";
+            case "just now": return "ahora mismo";
+            case "New episodes: ": return "Episodios nuevos: ";
+            case "Continue watching": return "Seguir viendo";
+            case " on ": return " en ";
+            case "Sleep timer off": return "Temporizador apagado";
+            case "Sleep timer off.": return "Temporizador apagado.";
+            case "Sleep in ": return "Apagar en ";
+            case "The TV will sleep in ": return "La TV se apagará en ";
+            case " min": return " min";
+            case " min.": return " min.";
+            case "Liked: picks will start from it.": return "Te gusta: las sugerencias partirán de esto.";
+            case "Removed from liked.": return "Quitado de favoritos.";
+            case "Saved": return "Guardado";
+            case "Couldn't save": return "No se pudo guardar";
+            case "Auto-scroll on": return "Desplazamiento automático activado";
+            case "Auto-scroll off": return "Desplazamiento automático desactivado";
+            case "Likes only steer the TMDB picks.": return "Los «me gusta» solo guían las sugerencias de TMDB.";
             default:
                 if (english.startsWith("Free My TV is on: new home screen and screensaver, ")) {
                     return "Free My TV está activo: nueva pantalla de inicio y protector, "

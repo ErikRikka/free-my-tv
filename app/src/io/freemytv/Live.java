@@ -49,8 +49,10 @@ final class Live {
     private AudioTrack track;
     private boolean echoCancel;
     private String heard = "", answer = "";
+    private volatile String answerItem;
+    private volatile long answerHeardFrom;   // when the answer's first sound reached the speaker
     private static final int KEEP_ITEMS = 16;
-    private final java.util.List<String> kept = new java.util.ArrayList<>();
+    private final java.util.List<String> kept = new java.util.ArrayList<>(), keptCall = new java.util.ArrayList<>();
     private final long[] tokens = new long[5];   // input audio, input text, of them cached, output audio, output text
 
     Live(Context c, Screen s) {
@@ -61,30 +63,33 @@ final class Live {
     /** Talks until close(), a goodbye, an app opened, or 3 quiet minutes. */
     void run() throws Exception {
         log("live start, " + Config.OPENAI_REALTIME_MODEL);
-        connect();
-        track = new AudioTrack.Builder()
-                .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
-                .setAudioFormat(new AudioFormat.Builder().setSampleRate(RATE).setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
-.setBufferSizeInBytes(Math.max(AudioTrack.getMinBufferSize(RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT) * 2, RATE / 5 * 2))
-                .setTransferMode(AudioTrack.MODE_STREAM).build();
-        track.play();
-        Thread player = new Thread(this::play, "live-player"), mic = new Thread(this::listen, "live-mic");
-        player.start();
-        mic.start();
-        send(new JSONObject().put("type", "session.update").put("session", session()));
-        screen.show("● Говорите", "", "");
+        Thread player = null, mic = null;
         try {
+            connect();
+            track = new AudioTrack.Builder()
+                    .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                    .setAudioFormat(new AudioFormat.Builder().setSampleRate(RATE).setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
+                    .setBufferSizeInBytes(Math.max(AudioTrack.getMinBufferSize(RATE, AudioFormat.CHANNEL_OUT_MONO,
+                            AudioFormat.ENCODING_PCM_16BIT) * 2, RATE / 5 * 2))
+                    .setTransferMode(AudioTrack.MODE_STREAM).build();
+            track.play();
+            player = new Thread(this::play, "live-player");
+            mic = new Thread(this::listen, "live-mic");
+            player.start();
+            mic.start();
+            send(new JSONObject().put("type", "session.update").put("session", session()));
+            screen.show("● Говорите", "", "");
             read();
         } catch (IOException e) {
             if (!closed) throw e;   // closed by us: the socket's read just stops
-        } finally {
+        } finally {   // (from the start: a failure while setting up still closes the socket and stops what started)
             close();
             audio.add(FLUSH);
-            mic.join(1500);
-            player.join(3000);
-            if (!player.isAlive()) track.release();
+            if (mic != null) mic.join(1500);
+            if (player != null) player.join(3000);
+            if (track != null && (player == null || !player.isAlive())) track.release();
             log("live tokens: in audio " + tokens[0] + ", in text " + tokens[1] + " (cached " + tokens[2] + "), out audio "
                     + tokens[3] + ", out text " + tokens[4]);
             save();
@@ -136,6 +141,14 @@ final class Live {
                 interrupted = false;
                 answer = "";
                 break;
+            case "response.output_item.added": {   // the answer's item: cut to what was heard if you interrupt it
+                JSONObject item = e.optJSONObject("item");
+                if (item != null && "message".equals(item.optString("type"))) {
+                    answerItem = item.optString("id");
+                    answerHeardFrom = 0;
+                }
+                break;
+            }
             case "response.output_audio.delta":
                 if (!interrupted) audio.add(Base64.decode(e.optString("delta"), Base64.DEFAULT));
                 break;
@@ -151,7 +164,13 @@ final class Live {
                 break;
             case "input_audio_buffer.speech_started":   // you started talking: it stops and listens
                 lastHeard = System.currentTimeMillis();
-                if (speaking()) log("live interrupted while speaking");
+                if (speaking()) {
+                    log("live interrupted while speaking");
+                    if (answerItem != null && answerHeardFrom > 0) {   // so it knows you didn't hear the rest
+                        send(new JSONObject().put("type", "conversation.item.truncate").put("item_id", answerItem)
+                                .put("content_index", 0).put("audio_end_ms", Math.max(0, System.currentTimeMillis() - answerHeardFrom)));
+                    }
+                }
                 interrupted = true;
                 audio.clear();
                 audio.add(FLUSH);
@@ -170,9 +189,20 @@ final class Live {
                 break;
             case "conversation.item.done": {   // only the last turns stay: OpenAI reads the whole conversation again before every answer
                 JSONObject item = e.optJSONObject("item");
-                if (item != null && !item.optString("id").isEmpty() && !kept.contains(item.optString("id"))) kept.add(item.optString("id"));
-                while (kept.size() > KEEP_ITEMS) {
+                if (item != null && !item.optString("id").isEmpty() && !kept.contains(item.optString("id"))) {
+                    kept.add(item.optString("id"));
+                    keptCall.add(item.optString("call_id"));
+                }
+                while (kept.size() > KEEP_ITEMS) {   // a function call and its output leave together, never one of them
+                    String call = keptCall.remove(0);
                     send(new JSONObject().put("type", "conversation.item.delete").put("item_id", kept.remove(0)));
+                    for (int i = 0; !call.isEmpty() && i < keptCall.size(); i++) {
+                        if (call.equals(keptCall.get(i))) {
+                            keptCall.remove(i);
+                            send(new JSONObject().put("type", "conversation.item.delete").put("item_id", kept.remove(i)));
+                            break;
+                        }
+                    }
                 }
                 break;
             }
@@ -581,6 +611,7 @@ final class Live {
             int n = track.write(pcm, off, len - off);
             if (n <= 0) break;
             long now = System.currentTimeMillis(), startsAt = Math.max(playUntil, now);
+            if (answerHeardFrom == 0) answerHeardFrom = startsAt;
             heard(pcm, off, n, startsAt);
             off += n;
             playUntil = startsAt + n / 2 * 1000L / RATE;
@@ -724,17 +755,22 @@ final class Live {
         note(context, message);
     }
 
+    private static final java.util.concurrent.ExecutorService LOG = java.util.concurrent.Executors.newSingleThreadExecutor();
+
     static void note(Context context, String message) {
         AppLog.w("voice: " + message);
         if (android.os.Build.VERSION.SDK_INT < 30) return;
-        try {
-            java.io.File f = new java.io.File(context.getExternalFilesDir(null), "voice.log");
-            if (f.length() > 512_000) f.delete();
-            try (java.io.FileWriter w = new java.io.FileWriter(f, true)) {
-                w.write(new java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.ROOT).format(new java.util.Date()) + " " + message + "\n");
+        String line = new java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.ROOT).format(new java.util.Date()) + " " + message + "\n";
+        LOG.execute(() -> {   // one writer, off the caller's thread (the main thread calls this too)
+            try {
+                java.io.File f = new java.io.File(context.getExternalFilesDir(null), "voice.log");
+                if (f.length() > 512_000) f.renameTo(new java.io.File(f.getPath() + ".1"));   // the previous one kept
+                try (java.io.FileWriter w = new java.io.FileWriter(f, true)) {
+                    w.write(line);
+                }
+            } catch (Exception ignored) {
             }
-        } catch (Exception ignored) {
-        }
+        });
     }
 
     private static void sleep(long ms) {
