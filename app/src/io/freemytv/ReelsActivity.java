@@ -63,13 +63,15 @@ public class ReelsActivity extends Activity {
             + ".then(function(r){return r.ok?'saved':'error '+r.status;},function(e){return 'error';});};"
             // Double OK: the next reel when this one ends (they loop on the site, so near the end rather than 'ended').
             + "window.fmtvAuto=false;document.addEventListener('timeupdate',function(e){var v=e.target;if(!fmtvAuto||v!==current()[1])return;"
-            + "if(v.currentTime<1)v.__fmtvNext=0;if(v.duration&&v.currentTime>v.duration-0.4&&!v.__fmtvNext){v.__fmtvNext=1;fmtvMove(1);}},true);"
-            // The site keeps the videos of reels around the current one loaded, each holding one of the TV's few video
-            // decoders, and after a few reels a new one can't start: all but the current one and its neighbours let go.
-            + "function fmtvRelease(){var c=current()[1];if(!c)return;var vs=[].slice.call(document.querySelectorAll('video'))"
-            + ".sort(function(a,b){return a.getBoundingClientRect().top-b.getBoundingClientRect().top;}),i=vs.indexOf(c);"
-            + "vs.forEach(function(v,j){if(Math.abs(j-i)>1&&(v.getAttribute('src')||v.currentSrc)){v.pause();v.removeAttribute('src');v.load();}});}"
-            + "setInterval(fmtvRelease,1500);"
+            + "if(v.currentTime<1)v.__fmtvNext=0;if(v.duration&&v.currentTime>v.duration-0.4&&!v.__fmtvNext){v.__fmtvNext=1;FMTV.next();}},true);"
+            // How far the reel is, and where its bottom edge is (the bar is drawn there, the site has none on phones).
+            + "setInterval(function(){var v=current()[1];if(!v||!v.duration)return FMTV.progress(-1,0);var r=v.getBoundingClientRect();"
+            + "var n=document.querySelector('nav,[role=tablist]'),b=Math.min(r.bottom,innerHeight);if(n){var t=n.getBoundingClientRect().top;if(t>0&&t<b)b=t;}"
+            + "FMTV.progress(v.currentTime/v.duration,b/innerHeight);},200);"
+            // The TV has five video decoders and the site keeps hold of them; when a reel can't get one ("trouble playing"),
+            // the page is opened again on that same reel, which lets them all go.
+            + "setInterval(function(){if(window.__fmtvReload)return;var v=current()[1];"
+            + "if((v&&v.error)||/trouble playing this video/i.test(document.body.innerText||'')){window.__fmtvReload=1;location.replace(location.href);}},1000);"
             // What's on screen, for the assistant: author, music, caption.
             + "setInterval(function(){var v=current()[1];if(!v)return;var el=v.parentElement;FMTV.reel(location.href,(el.innerText||'').slice(0,600));},2000);"
             + "window.fmtvToggle=function(){var v=current()[1];if(!v)return;v.muted=false;if(v.paused)v.play();else v.pause();};"
@@ -78,6 +80,8 @@ public class ReelsActivity extends Activity {
     private WebView web;
     private View pointer;
     private android.widget.TextView heart, note;
+    private View bar;
+    private float barDone;
     private float px = -1, py = -1;
     private volatile boolean typing, dialog;
 
@@ -111,6 +115,17 @@ public class ReelsActivity extends Activity {
 
             @JavascriptInterface public void dialog(boolean on) {
                 dialog = on;
+            }
+
+            @JavascriptInterface public void next() {
+                ui.post(() -> {
+                    android.util.DisplayMetrics m = getResources().getDisplayMetrics();
+                    drag(m.widthPixels / 2f, m.heightPixels * 0.6f);
+                });
+            }
+
+            @JavascriptInterface public void progress(float done, float bottom) {
+                ui.post(() -> showProgress(done, bottom));
             }
 
             @JavascriptInterface public void reel(String url, String text) {
@@ -171,6 +186,18 @@ public class ReelsActivity extends Activity {
         heart.setAlpha(0f);
         root.addView(heart, new android.widget.FrameLayout.LayoutParams(android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
                 android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.Gravity.CENTER));
+        bar = new View(this) {
+            final android.graphics.Paint p = new android.graphics.Paint();
+
+            @Override protected void onDraw(android.graphics.Canvas c) {
+                p.setColor(0x55FFFFFF);
+                c.drawRect(0, 0, getWidth(), getHeight(), p);
+                p.setColor(0xFFFFFFFF);
+                c.drawRect(0, 0, getWidth() * barDone, getHeight(), p);
+            }
+        };
+        bar.setVisibility(View.GONE);
+        root.addView(bar, new android.widget.FrameLayout.LayoutParams(1, 1, android.view.Gravity.TOP | android.view.Gravity.START));
         note = new android.widget.TextView(this);
         note.setTextColor(Color.WHITE);
         note.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, dm.heightPixels * 0.035f);
@@ -243,6 +270,24 @@ public class ReelsActivity extends Activity {
         }
     }
 
+    /** The thin bar along the reel's bottom edge: white for what's been played. */
+    private void showProgress(float done, float bottom) {
+        if (done < 0 || !onReels()) {
+            bar.setVisibility(View.GONE);
+            return;
+        }
+        bar.setVisibility(View.VISIBLE);
+        int h = Math.max(3, Math.round(getResources().getDisplayMetrics().heightPixels * 0.004f));
+        android.widget.FrameLayout.LayoutParams lp = (android.widget.FrameLayout.LayoutParams) bar.getLayoutParams();
+        lp.width = web.getWidth();
+        lp.height = h;
+        lp.leftMargin = web.getLeft();
+        lp.topMargin = Math.round(web.getTop() + web.getHeight() * bottom) - h;
+        bar.setLayoutParams(lp);
+        barDone = Math.max(0, Math.min(1, done));
+        bar.invalidate();
+    }
+
     /** A big heart over the reel for a moment: the like went through. */
     private void showHeart() {
         heart.setScaleX(0.6f);
@@ -273,20 +318,23 @@ public class ReelsActivity extends Activity {
         pointer.setTranslationY(py - pointer.getHeight() / 2f);
     }
 
-    /** A finger dragging the page up by dy (down for a negative one), so what's below the edge comes into view. */
+    /** A finger dragging the page up by dy (down for a negative one), in real time, a step a frame, as a finger would. */
     private void drag(float x, float dy) {
         android.util.DisplayMetrics m = getResources().getDisplayMetrics();
-        float y0 = m.heightPixels / 2f + dy / 2, y1 = m.heightPixels / 2f - dy / 2;
-        long t = android.os.SystemClock.uptimeMillis();
-        int steps = 8;
+        float y0 = m.heightPixels / 2f + dy / 2, y1 = m.heightPixels / 2f - dy / 2, wx = x - web.getLeft();
+        long start = android.os.SystemClock.uptimeMillis();
+        int steps = 10;
         for (int i = 0; i <= steps + 1; i++) {
-            int action = i == 0 ? android.view.MotionEvent.ACTION_DOWN : i > steps ? android.view.MotionEvent.ACTION_UP
-                    : android.view.MotionEvent.ACTION_MOVE;
-            float y = y0 + (y1 - y0) * Math.min(i, steps) / steps;
-            android.view.MotionEvent ev = android.view.MotionEvent.obtain(t, t + i * 30L, action, x - web.getLeft(), y, 0);
-            ev.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);
-            web.dispatchTouchEvent(ev);
-            ev.recycle();
+            final int n = i;
+            ui.postAtTime(() -> {
+                int action = n == 0 ? android.view.MotionEvent.ACTION_DOWN : n > steps ? android.view.MotionEvent.ACTION_UP
+                        : android.view.MotionEvent.ACTION_MOVE;
+                float y = y0 + (y1 - y0) * Math.min(n, steps) / steps;
+                android.view.MotionEvent ev = android.view.MotionEvent.obtain(start, android.os.SystemClock.uptimeMillis(), action, wx, y, 0);
+                ev.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);
+                web.dispatchTouchEvent(ev);
+                ev.recycle();
+            }, start + i * 16L);
         }
     }
 
@@ -312,8 +360,10 @@ public class ReelsActivity extends Activity {
         if (onReels() && (k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_RIGHT || ok)) {
             boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
             if (down && e.getRepeatCount() == 0) web.evaluateJavascript(SCRIPT, null);
-            if (k == KeyEvent.KEYCODE_DPAD_DOWN && down && e.getRepeatCount() == 0) web.evaluateJavascript("fmtvMove(1)", null);
-            else if (k == KeyEvent.KEYCODE_DPAD_UP && down && e.getRepeatCount() == 0) web.evaluateJavascript("fmtvMove(-1)", null);
+            // A finger's swipe on the page: the site turns the reel, loads more and changes the address itself.
+            android.util.DisplayMetrics m = getResources().getDisplayMetrics();
+            if (k == KeyEvent.KEYCODE_DPAD_DOWN && down && e.getRepeatCount() == 0) drag(m.widthPixels / 2f, m.heightPixels * 0.6f);
+            else if (k == KeyEvent.KEYCODE_DPAD_UP && down && e.getRepeatCount() == 0) drag(m.widthPixels / 2f, -m.heightPixels * 0.6f);
             else if (k == KeyEvent.KEYCODE_DPAD_RIGHT && !down) {
                 // Held (TCL's remote sends no repeats, so by how long): into Saved; a press: a like.
                 if (e.getEventTime() - e.getDownTime() > 600) {
