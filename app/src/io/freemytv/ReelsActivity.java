@@ -76,26 +76,17 @@ public class ReelsActivity extends Activity {
             // more than one away lets go of its file (kept, and given back when you come next to it again).
             + "setInterval(function(){var c=current()[1];if(!c)return;var vs=[].slice.call(document.querySelectorAll('video'))"
             + ".sort(function(a,b){return a.getBoundingClientRect().top-b.getBoundingClientRect().top;}),i=vs.indexOf(c);"
+            + "var nx=vs[i+1];if(nx&&nx.getAttribute('src')&&nx.preload!=='auto'){nx.preload='auto';nx.load();}"   // the next one loads ahead
             + "vs.forEach(function(v,j){var src=v.getAttribute('src');"
             + "if(Math.abs(j-i)>1&&src&&v.readyState>0){v.__fmtvSrc=src;v.pause();v.removeAttribute('src');v.load();}"
             + "else if(Math.abs(j-i)<=1&&!src&&v.__fmtvSrc){v.setAttribute('src',v.__fmtvSrc);v.__fmtvSrc=null;v.__fmtvBack=1;}});"
             // one given back is the site's own as soon as it plays; until then, as the current reel, it's started here
             + "if(c.__fmtvBack){if(!c.paused)c.__fmtvBack=0;else if(c!==window.__fmtvUserPaused)c.play();}},700);"
+            // A reel that has come to the middle and sits there not loading for two seconds (not paused by you) is started.
+            + "setInterval(function(){var c=current()[1];if(!c)return;if(c!==window.__fmtvSeen){window.__fmtvSeen=c;window.__fmtvSince=Date.now();return;}"
+            + "if(c.paused&&c.readyState<2&&c!==window.__fmtvUserPaused&&Date.now()-window.__fmtvSince>2000){window.__fmtvSince=Date.now();c.play();}},500);"
             // What's on screen, for the assistant: author, music, caption.
             + "setInterval(function(){var v=current()[1];if(!v)return;var el=v.parentElement;FMTV.reel(location.href,(el.innerText||'').slice(0,600));},2000);"
-            // The next (or previous) reel put in place at once: the site starts loading it straight away, about a second
-            // sooner than after a swipe's scrolling settles. 'drag' when it isn't on the page yet (a swipe loads more).
-            + "window.fmtvJump=function(dir){var vs=[].slice.call(document.querySelectorAll('video')).filter(function(v){return v.getBoundingClientRect().height>=50;})"
-            + ".sort(function(a,b){return a.getBoundingClientRect().top-b.getBoundingClientRect().top;}),c=current()[1],n=vs[vs.indexOf(c)+dir];"
-            + "if(!c||!n)return 'drag';var sc=c;while(sc&&!(sc.scrollHeight>sc.clientHeight+10&&/(auto|scroll)/.test(getComputedStyle(sc).overflowY)))sc=sc.parentElement;"
-            + "(sc||document.scrollingElement).scrollBy({top:n.getBoundingClientRect().top-c.getBoundingClientRect().top,behavior:'instant'});return 'ok';};"
-            // Held Right: playbackRate 2. Held Left: video plays no way backwards, so it steps back 0.2 s every 0.1 s.
-            // The site sets the speed back by itself, so it's set again every 0.1 s while held.
-            + "window.fmtvSeek=function(r){var v=current()[1];if(!v)return;clearInterval(window.__fmtvBack);v.playbackRate=1;"
-            + "if(r>0){if(v.paused)v.play();window.__fmtvBack=setInterval(function(){if(v.playbackRate!==r)v.playbackRate=r;},100);v.playbackRate=r;}"
-            + "else if(r<0){v.pause();window.__fmtvBack=setInterval(function(){v.currentTime=Math.max(0,v.currentTime-0.2);},100);}"
-            + "else{if(v!==window.__fmtvUserPaused)v.play();var n=0;window.__fmtvBack=setInterval(function(){if(v.playbackRate!==1)v.playbackRate=1;"
-            + "if(++n>15)clearInterval(window.__fmtvBack);},100);}};"
             + "window.fmtvToggle=function(){var v=current()[1];if(!v)return;v.muted=false;if(v.paused){window.__fmtvUserPaused=null;v.play();}"
             + "else{window.__fmtvUserPaused=v;v.pause();}};"
             + "})();";
@@ -116,6 +107,7 @@ public class ReelsActivity extends Activity {
         } catch (IllegalStateException ignored) {
         }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        WebView.setWebContentsDebuggingEnabled(Config.DEBUG_WEBVIEW);
         // A phone's shape in the middle of the screen (Instagram's site for phones, which this WebView is, fits a reel
         // into it whole), drawn a little larger than a phone would so the page is about 400 points wide.
         android.content.res.Configuration phone = new android.content.res.Configuration(getResources().getConfiguration());
@@ -357,14 +349,13 @@ public class ReelsActivity extends Activity {
         pointer.setTranslationY(py - pointer.getHeight() / 2f);
     }
 
-    /** To the next reel (1) or the one before (-1): at once if it's on the page, else a finger's swipe, which loads more. */
+    /**
+     * To the next reel (1) or the one before (-1): a finger's swipe on the page. (Putting the reel in place directly
+     * started it about a second sooner, but the site didn't take it in, and stopped loading more reels.)
+     */
     private void go(int dir) {
-        web.evaluateJavascript("fmtvJump(" + dir + ")", r -> {
-            if (r.contains("drag")) {
-                android.util.DisplayMetrics m = getResources().getDisplayMetrics();
-                drag(m.widthPixels / 2f, dir * m.heightPixels * 0.6f);
-            }
-        });
+        android.util.DisplayMetrics m = getResources().getDisplayMetrics();
+        drag(m.widthPixels / 2f, dir * m.heightPixels * 0.6f);
     }
 
     /** A finger dragging the page up by dy (down for a negative one), in real time, a step a frame, as a finger would. */
@@ -372,7 +363,7 @@ public class ReelsActivity extends Activity {
         android.util.DisplayMetrics m = getResources().getDisplayMetrics();
         float y0 = m.heightPixels / 2f + dy / 2, y1 = m.heightPixels / 2f - dy / 2, wx = x - web.getLeft();
         long start = android.os.SystemClock.uptimeMillis();
-        int steps = 10;
+        int steps = 6;   // a quick flick: the site turns the reel sooner
         for (int i = 0; i <= steps + 1; i++) {
             final int n = i;
             ui.postAtTime(() -> {
