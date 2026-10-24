@@ -1,7 +1,5 @@
 package io.freemytv;
 
-import android.net.LocalServerSocket;
-import android.net.LocalSocket;
 import android.os.SystemClock;
 import android.view.InputDevice;
 import android.view.InputEvent;
@@ -10,39 +8,38 @@ import android.view.MotionEvent;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.lang.reflect.Method;
+import java.net.Socket;
 
 /**
- * Touches on the screen, fast. Started once through the TV's own ADB (app_process, with the shell's right to inject input,
- * the way scrcpy does it) and then kept running: `input tap` would start a new program for every touch, about a second
- * each. Listens on a local socket and takes commands only from Free My TV's own user id:
- * "tap x y", "swipe x1 y1 x2 y2 ms", "quit".
+ * Touches on the screen, fast. Started through the TV's own ADB (app_process, with the shell's right to inject input,
+ * the way scrcpy does it) and kept running while Free My TV's key service is: `input tap` would start a new program for
+ * every touch, about a second each. The TV's security rules don't let an app reach a program of the shell's, so this one
+ * dials the app instead (a port on 127.0.0.1) and the first line must be the one-time key it was started with.
+ * Commands, a line each: "tap x y", "swipe x1 y1 x2 y2 ms". It ends when the app hangs up.
  */
 public final class TouchServer {
-    static final String SOCKET = "freemytv-touch";
-
     private static Method inject;
     private static Object inputManager;
 
     public static void main(String[] args) throws Exception {
-        int allowed = Integer.parseInt(args[0]);
+        int port = Integer.parseInt(args[0]);
+        String key = args[1];
         Class<?> im = Class.forName("android.hardware.input.InputManager");
         inputManager = im.getMethod("getInstance").invoke(null);
         inject = im.getMethod("injectInputEvent", InputEvent.class, int.class);
-        LocalServerSocket server = new LocalServerSocket(SOCKET);
-        while (true) {
-            try (LocalSocket client = server.accept()) {
-                if (client.getPeerCredentials().getUid() != allowed) continue;
-                BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
-                for (String line; (line = in.readLine()) != null; ) {
-                    String[] w = line.trim().split(" ");
-                    if (w[0].equals("quit")) return;
+        try (Socket app = new Socket("127.0.0.1", port)) {
+            BufferedReader in = new BufferedReader(new InputStreamReader(app.getInputStream()));
+            if (!key.equals(in.readLine())) return;
+            for (String line; (line = in.readLine()) != null; ) {
+                String[] w = line.trim().split(" ");
+                try {
                     if (w[0].equals("tap") && w.length == 3) {
                         swipe(f(w[1]), f(w[2]), f(w[1]), f(w[2]), 40);
                     } else if (w[0].equals("swipe") && w.length == 6) {
                         swipe(f(w[1]), f(w[2]), f(w[3]), f(w[4]), (int) f(w[5]));
                     }
+                } catch (Exception ignored) {
                 }
-            } catch (Exception ignored) {
             }
         }
     }

@@ -98,12 +98,10 @@ final class Reels {
         return new float[] {m.widthPixels / 2f, m.heightPixels / 2f};
     }
 
-    // Touches go through TouchServer, a small program of ours the TV's own ADB starts once (this TV takes a service's
-    // gestures and then drops them, having no touch screen); `input` through ADB if it can't start. On a thread of their own.
+    // Touches go through TouchServer, a small program of ours the TV's own ADB starts (this TV takes a service's gestures
+    // and then drops them, having no touch screen); `input` through ADB if it can't start. On a thread of their own.
     private static final java.util.concurrent.ExecutorService TOUCH = java.util.concurrent.Executors.newSingleThreadExecutor();
-    private static android.net.LocalSocket touch;
     private static java.io.Writer touchOut;
-    private static boolean fresh;
     private static Adb adb;
 
     private static void input(Context c, String command) {
@@ -116,62 +114,26 @@ final class Reels {
                 return;
             } catch (Exception e) {
                 AppLog.w("reels: touch server: " + e.getMessage());
-                closeTouch();
+                touchOut = null;
             }
             shell(app, "input " + command);
         });
     }
 
-    /** Connects to TouchServer, starting it the first time (and again once per run of this process, after an update). */
+    /** Starts TouchServer and waits for it to dial in on a port of ours, with a key only it was given. */
     private static void openTouch(Context app) throws Exception {
-        if (!fresh) {
-            fresh = true;
-            try {
-                connectTouch();
-                touchOut.write("quit\n");   // the one left from an older version
-                touchOut.flush();
-                closeTouch();
-                Thread.sleep(150);
-            } catch (Exception ignored) {
-                closeTouch();
-            }
-        } else {
-            try {
-                connectTouch();
-                return;
-            } catch (Exception ignored) {
-                closeTouch();
-            }
+        try (java.net.ServerSocket listen = new java.net.ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1"))) {
+            listen.setSoTimeout(5000);
+            String key = Long.toHexString(new java.security.SecureRandom().nextLong()) + Long.toHexString(System.nanoTime());
+            shell(app, "CLASSPATH=" + app.getApplicationInfo().sourceDir + " setsid nohup app_process /system/bin "
+                    + TouchServer.class.getName() + " " + listen.getLocalPort() + " " + key + " >/dev/null 2>&1 &");
+            java.net.Socket server = listen.accept();
+            server.setTcpNoDelay(true);
+            touchOut = new java.io.OutputStreamWriter(server.getOutputStream());
+            touchOut.write(key + "\n");
+            touchOut.flush();
+            AppLog.w("reels: touch server up");
         }
-        String apk = app.getApplicationInfo().sourceDir;
-        shell(app, "CLASSPATH=" + apk + " setsid nohup app_process /system/bin " + TouchServer.class.getName() + " "
-                + android.os.Process.myUid() + " >/dev/null 2>&1 &");
-        for (int i = 0; i < 20; i++) {
-            Thread.sleep(150);
-            try {
-                connectTouch();
-                AppLog.w("reels: touch server up");
-                return;
-            } catch (Exception e) {
-                closeTouch();
-            }
-        }
-        throw new java.io.IOException("didn't start");
-    }
-
-    private static void connectTouch() throws java.io.IOException {
-        touch = new android.net.LocalSocket();
-        touch.connect(new android.net.LocalSocketAddress(TouchServer.SOCKET));
-        touchOut = new java.io.OutputStreamWriter(touch.getOutputStream());
-    }
-
-    private static void closeTouch() {
-        try {
-            if (touch != null) touch.close();
-        } catch (Exception ignored) {
-        }
-        touch = null;
-        touchOut = null;
     }
 
     private static void shell(Context app, String command) {
