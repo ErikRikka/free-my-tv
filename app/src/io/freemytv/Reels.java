@@ -37,7 +37,10 @@ final class Reels {
         if (p.contains("inputmethod") || p.equals("com.android.systemui")) return;   // the keyboard or a toast over the app
         if (p.equals(s.getPackageName()) && "android.view.View".equals(String.valueOf(cls))) return;   // our own pointer
         if (!p.equals(front)) AppLog.w("reels: in front " + p);
-        if (ours(p) && !p.equals(front)) reels = true;   // it opens on Reels (reelsIntent): the remote scrolls them
+        if (ours(p) && !p.equals(front)) {   // it opens on Reels (reelsIntent): the remote scrolls them
+            reels = true;
+            AppLog.w("reels: opened, scrolling");
+        }
         front = p;
         showPointer(s, ours(p) && !reels);
         if (ours(p)) warmTouch(s);
@@ -91,6 +94,7 @@ final class Reels {
             else if (down && !held) {   // held: the other way of driving it
                 held = true;
                 reels = !reels;
+                AppLog.w("reels: held OK, " + (reels ? "scrolling" : "pointer"));
                 showPointer(s, !reels);
                 Toast.makeText(s, reels ? "Пульт листает рилзы (держи OK — курсор)" : "Курсор: стрелки двигают, OK нажимает (держи OK — рилзы)",
                         Toast.LENGTH_LONG).show();
