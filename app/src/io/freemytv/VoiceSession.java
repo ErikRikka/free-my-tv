@@ -27,8 +27,10 @@ import java.util.regex.Pattern;
  */
 final class VoiceSession extends VoiceInteractionSession {
     private static final int RATE = 16000;
-    private static final Pattern STOP = Pattern.compile("^(стоп|хватит|отмена|отбой|пока|до свидания|всё|все|спасибо|ладно|закройся|выход|"
-            + "спасибо большое|всё спасибо|все спасибо|пока пока)( .*)?$");
+    // A goodbye said as such: "пока", "хватит" and the like may go on ("пока, до завтра"), but "все", "спасибо", "ладно" end
+    // it only on their own ("Ладно, а какая погода?" and "Спасибо, теперь открой YouTube" are questions, not goodbyes).
+    private static final Pattern STOP = Pattern.compile("^((стоп|хватит|отмена|отбой|пока|до свидания|закройся|выход|пока пока)( .*)?"
+            + "|всё|все|спасибо|ладно|спасибо большое|всё спасибо|все спасибо|спасибо пока|спасибо до свидания)$");
     private static final Pattern JUNK = Pattern.compile("(?i)субтитр|продолжение следует|спасибо за просмотр|редактор|корректор|"
             + "dimatorzok|amara\\.org");
 
@@ -36,7 +38,7 @@ final class VoiceSession extends VoiceInteractionSession {
     private final Handler ui = new Handler(Looper.getMainLooper());
     private TextView status, heard, answer;
     private volatile boolean busy, closing;
-    private Speaker speaker;
+    private volatile Speaker speaker;   // the conversation's thread drops it while the main thread may stop it
     private volatile Live live;
     private volatile long endedAt;
 
@@ -198,7 +200,8 @@ final class VoiceSession extends VoiceInteractionSession {
         endedAt = System.currentTimeMillis();
         Live l = live;
         if (l != null) l.close();
-        if (speaker != null) speaker.stop();
+        Speaker sp = speaker;
+        if (sp != null) sp.stop();
         show("", "", "До встречи!");
         ui.postDelayed(this::finish, 400);
     }
@@ -367,6 +370,7 @@ final class VoiceSession extends VoiceInteractionSession {
         closing = true;
         Live l = live;
         if (l != null) l.close();
-        if (speaker != null) speaker.stop();
+        Speaker sp = speaker;
+        if (sp != null) sp.stop();
     }
 }

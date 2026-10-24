@@ -163,8 +163,10 @@ final class Live {
                 log("live heard " + heard);
                 screen.show("", heard, answer);
                 break;
-            case "response.function_call_arguments.done":
-                call(e.optString("name"), e.optString("arguments"), e.optString("call_id"));
+            case "response.function_call_arguments.done":   // run when the response is done, all of its calls together
+                synchronized (calls) {
+                    calls.add(new String[] {e.optString("name"), e.optString("arguments"), e.optString("call_id")});
+                }
                 break;
             case "conversation.item.done": {   // only the last turns stay: OpenAI reads the whole conversation again before every answer
                 JSONObject item = e.optJSONObject("item");
@@ -188,12 +190,13 @@ final class Live {
                         tokens[4] += out.optInt("text_tokens");
                     }
                 }
-                JSONArray output = e.optJSONObject("response") != null ? e.getJSONObject("response").optJSONArray("output") : null;
-                boolean calls = false;
-                for (int i = 0; output != null && i < output.length(); i++) {
-                    if ("function_call".equals(output.getJSONObject(i).optString("type"))) calls = true;
+                java.util.List<String[]> toRun;
+                synchronized (calls) {
+                    toRun = new java.util.ArrayList<>(calls);
+                    calls.clear();
                 }
-                if (leaving && !calls) {
+                if (!toRun.isEmpty()) run(toRun);
+                else if (leaving) {
                     drain();
                     close();
                 }
@@ -206,26 +209,35 @@ final class Live {
         }
     }
 
-    private void call(String name, String args, String id) {
+    private final java.util.List<String[]> calls = new java.util.ArrayList<>();   // {name, arguments, call id}
+
+    /**
+     * The calls of one finished response, one after another on a thread of their own, then their results and a single
+     * request for the answer: one per call would race (a second answer refused while the first runs, or written before
+     * the other result is in).
+     */
+    private void run(java.util.List<String[]> toRun) {
         new Thread(() -> {
-            String result;
-            if (name.equals("end_conversation")) {
-                saidBye = true;
-                result = "Разговор закончен.";
-            } else {
-                try {
-                    TvTools.left = false;
-                    result = TvTools.run(context, name, new JSONObject(args.isEmpty() ? "{}" : args));
-                    if (TvTools.left) leaving = true;
-                } catch (Exception ex) {
-                    result = "Не получилось: " + ex.getMessage();
-                }
-            }
-            log(name + " " + args + " -> " + result);
-            said("assistant", "[" + name + " " + args + " → " + result + "]");
             try {
-                send(new JSONObject().put("type", "conversation.item.create").put("item", new JSONObject()
-                        .put("type", "function_call_output").put("call_id", id).put("output", result)));
+                for (String[] c : toRun) {
+                    String name = c[0], args = c[1], result;
+                    if (name.equals("end_conversation")) {
+                        saidBye = true;
+                        result = "Разговор закончен.";
+                    } else {
+                        try {
+                            TvTools.left = false;
+                            result = TvTools.run(context, name, new JSONObject(args.isEmpty() ? "{}" : args));
+                            if (TvTools.left) leaving = true;
+                        } catch (Exception ex) {
+                            result = "Не получилось: " + ex.getMessage();
+                        }
+                    }
+                    log(name + " " + args + " -> " + result);
+                    said("assistant", "[" + name + " " + args + " → " + result + "]");
+                    send(new JSONObject().put("type", "conversation.item.create").put("item", new JSONObject()
+                            .put("type", "function_call_output").put("call_id", c[2]).put("output", result)));
+                }
                 if (!saidBye) send(new JSONObject().put("type", "response.create"));
                 else {
                     sleep(300);   // the goodbye's last words are still arriving
@@ -235,7 +247,7 @@ final class Live {
             } catch (Exception ex) {
                 log("live " + ex);
             }
-        }).start();
+        }, "live-tools").start();
     }
 
     /** Waits until what was said has been heard (the panel then closes). */
@@ -253,11 +265,13 @@ final class Live {
 
     private final JSONArray transcript = new JSONArray();
 
-    private synchronized void said(String role, String text) {
+    private void said(String role, String text) {
         if (text.trim().isEmpty()) return;
-        try {
-            transcript.put(new JSONObject().put("role", role).put("content", text.trim()));
-        } catch (Exception ignored) {
+        synchronized (lines) {
+            try {
+                transcript.put(new JSONObject().put("role", role).put("content", text.trim()));
+            } catch (Exception ignored) {
+            }
         }
     }
 
@@ -267,9 +281,13 @@ final class Live {
      */
     private void save() {
         final JSONArray said;
-        synchronized (this) {
+        synchronized (lines) {
             if (transcript.length() == 0) return;
-            said = transcript;
+            try {
+                said = new JSONArray(transcript.toString());   // a copy: a late tool's line can't change it mid-send
+            } catch (Exception e) {
+                return;
+            }
         }
         new Thread(() -> {
             try {
@@ -346,11 +364,12 @@ final class Live {
             log("live mic asleep, waiting for the mic button");
             micAsleep = true;
             screen.show("Микрофон пульта уснул", "", "Нажми кнопку микрофона, чтобы продолжить");
-            synchronized (this) {
-                long until = System.currentTimeMillis() + 180_000;
-                while (micAsleep && !closed && System.currentTimeMillis() < until) {
+            long until = System.currentTimeMillis() + 180_000;
+            while (micAsleep && !closed && System.currentTimeMillis() < until) {
+                ping();   // outside the lock: a write stuck on a dead line must not hold up the mic button
+                synchronized (micLock) {
                     try {
-                        wait(1000);
+                        if (micAsleep) micLock.wait(1000);
                     } catch (InterruptedException e) {
                         return;
                     }
@@ -371,10 +390,12 @@ final class Live {
         return micAsleep;
     }
 
-    synchronized void wake() {
+    void wake() {
         log("live mic button: waking the mic");
-        micAsleep = false;
-        notifyAll();
+        synchronized (micLock) {
+            micAsleep = false;
+            micLock.notifyAll();
+        }
     }
 
     /** Streams the mic until the conversation ends (false) or the remote stops sending sound (true: open it again). */
@@ -419,6 +440,7 @@ final class Live {
                     if (speaking() || !audio.isEmpty()) lastSpoke = now;
                     deaf = now - lastSpoke < 400;
                 } else deaf = echo(in, n, now);
+                ping();
                 send(new JSONObject().put("type", "input_audio_buffer.append")
                         .put("audio", Base64.encodeToString(deaf ? quiet : up, 0, frames * 2, Base64.NO_WRAP)));
                 if (!speaking() && audio.isEmpty() && System.currentTimeMillis() - lastHeard > 180_000) {
@@ -569,10 +591,17 @@ final class Live {
 
     private void connect() throws IOException {
         String host = "api.openai.com";
-        socket = (SSLSocket) SSLSocketFactory.getDefault().createSocket();
-        socket.connect(new InetSocketAddress(host, 443), 8000);
+        java.net.Socket plain = new java.net.Socket();
+        plain.connect(new InetSocketAddress(host, 443), 8000);
+        // TLS over it, told the host (SNI); a bare SSLSocket checks the certificate chain but not whose it is, so that's
+        // checked too: any trusted certificate for another name would otherwise get the key and the room's sound.
+        socket = (SSLSocket) ((SSLSocketFactory) SSLSocketFactory.getDefault()).createSocket(plain, host, 443, true);
         socket.setSoTimeout(10000);   // until the conversation is set up
         socket.startHandshake();
+        if (!javax.net.ssl.HttpsURLConnection.getDefaultHostnameVerifier().verify(host, socket.getSession())) {
+            socket.close();
+            throw new IOException("ChatGPT live: сертификат не от " + host);
+        }
         out = socket.getOutputStream();
         byte[] nonce = new byte[16];
         new SecureRandom().nextBytes(nonce);
@@ -588,7 +617,7 @@ final class Live {
             if (b < 0) throw new IOException("live: connection closed");
             head.append((char) b);
         }
-        socket.setSoTimeout(0);
+        socket.setSoTimeout(45_000);   // a ping goes out every 15 s (listen): 45 s of nothing means the line is dead
         String status = head.substring(0, head.indexOf("\r\n"));
         if (!status.contains(" 101 ")) {
             throw new IOException("ChatGPT live: " + status + (status.contains(" 401 ") ? " (неверный ключ)" : status.contains(" 403 ")
@@ -603,11 +632,12 @@ final class Live {
             int b0 = in.read(), b1 = in.read();
             if (b0 < 0 || b1 < 0) break;
             long n = b1 & 0x7F;
-            if (n == 126) n = (in.read() << 8) | in.read();
+            if (n == 126) n = (next(in) << 8) | next(in);
             else if (n == 127) {
                 n = 0;
-                for (int i = 0; i < 8; i++) n = (n << 8) | in.read();
+                for (int i = 0; i < 8; i++) n = (n << 8) | next(in);
             }
+            if (n > 16_000_000) throw new IOException("live: frame of " + n + " bytes");
             byte[] p = new byte[(int) n];
             for (int off = 0; off < n; ) {
                 int r = in.read(p, off, (int) n - off);
@@ -629,13 +659,43 @@ final class Live {
         }
     }
 
+    private long pingAt;
+
+    /** A ping every 15 s: the server's pong keeps the reader's 45 s timeout from taking a quiet line for a dead one. */
+    private void ping() {
+        long now = System.currentTimeMillis();
+        if (now - pingAt < 15_000) return;
+        pingAt = now;
+        try {
+            frame(0x9, new byte[0]);
+        } catch (IOException e) {
+            close();
+        }
+    }
+
+    private static int next(InputStream in) throws IOException {
+        int b = in.read();
+        if (b < 0) throw new IOException("live: connection closed");
+        return b;
+    }
+
     private void send(JSONObject o) throws IOException {
         frame(0x1, o.toString().getBytes(StandardCharsets.UTF_8));
     }
 
     private final SecureRandom random = new SecureRandom();
 
-    private synchronized void frame(int op, byte[] data) throws IOException {
+    // Three locks for three things: a write blocked on a stalled line must not hold up the transcript or the mic button
+    // (wake() runs on the main thread).
+    private final Object writing = new Object(), lines = new Object(), micLock = new Object();
+
+    private void frame(int op, byte[] data) throws IOException {
+        synchronized (writing) {
+            frameLocked(op, data);
+        }
+    }
+
+    private void frameLocked(int op, byte[] data) throws IOException {
         if (out == null) return;
         ByteArrayOutputStream f = new ByteArrayOutputStream(data.length + 14);
         f.write(0x80 | op);
@@ -656,13 +716,17 @@ final class Live {
         out.flush();
     }
 
-    /** To the log and to voice.log (adb pull /sdcard/Android/data/io.freemytv/files/voice.log): TV logs overflow in minutes. */
+    /**
+     * To the log and to voice.log (adb pull /sdcard/Android/data/io.freemytv/files/voice.log): TV logs overflow in minutes.
+     * The file holds what was said, so only from Android 11 on, where other apps can't read an app's folder there.
+     */
     private void log(String message) {
         note(context, message);
     }
 
     static void note(Context context, String message) {
         AppLog.w("voice: " + message);
+        if (android.os.Build.VERSION.SDK_INT < 30) return;
         try {
             java.io.File f = new java.io.File(context.getExternalFilesDir(null), "voice.log");
             if (f.length() > 512_000) f.delete();

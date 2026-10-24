@@ -124,10 +124,14 @@ final class Memory {
     /** Forgets the facts that mention what, or everything for "всё". */
     static synchronized String forget(Context c, String what) {
         String w = what.trim().toLowerCase(Locale.ROOT);
-        if (w.isEmpty() || w.equals("всё") || w.equals("все") || w.equals("everything")) {
+        if (w.isEmpty()) return "Не понял, что забыть.";   // a malformed call must not wipe everything
+        if (w.equals("всё") || w.equals("все") || w.equals("everything")) {
+            File f = file(c);
+            if (f.exists()) f.renameTo(new File(f.getPath() + ".bak"));   // one step back, by hand, if it was a mistake
             store(c, new JSONObject());
             return "Память очищена.";
         }
+        if (w.replaceAll("[^\\p{L}\\p{N}]", "").length() < 3) return "Слишком коротко: скажи, что именно забыть.";
         JSONObject m = load(c);
         JSONArray facts = list(m, "facts"), kept = new JSONArray();
         int gone = 0;

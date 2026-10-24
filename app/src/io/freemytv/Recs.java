@@ -403,8 +403,10 @@ final class Recs {
         int used = 0;
         for (String seed : seeds) {
             int colon = seed.indexOf(':');
-            if (colon < 0 || used++ >= 10) continue;
+            if (colon < 0) continue;
             String kind = seed.substring(0, colon);
+            if (!kind.equals("movie") && !kind.equals("tv")) continue;   // a feed's pick has no TMDB page: not a seed
+            if (used++ >= 10) continue;
             JSONArray similar;
             try {
                 similar = get("/" + kind + "/" + seed.substring(colon + 1) + "/recommendations?language=" + lang()).getJSONArray("results");
@@ -803,6 +805,8 @@ final class Recs {
         }
     }
 
+    private static final long IMAGE_CACHE_BYTES = 150L * 1024 * 1024;
+
     private static void prune(File dir) {
         // A download cut off when the system stopped the app leaves its .part behind.
         long stale = System.currentTimeMillis() - 10 * 60_000L;
@@ -811,12 +815,16 @@ final class Recs {
             //noinspection ResultOfMethodCallIgnored
             if (parts[i].lastModified() < stale) parts[i].delete();
         }
+        // By size, not count: the feeds hold well over a hundred pictures, and a slideshow lap shouldn't download them
+        // all again. The oldest go first.
         File[] files = dir.listFiles((d, name) -> !name.endsWith(".part"));
-        if (files == null || files.length <= 24) return;
-        Arrays.sort(files, (a, b) -> Long.compare(a.lastModified(), b.lastModified()));
-        for (int i = 0; i < files.length - 24; i++) {
+        if (files == null) return;
+        Arrays.sort(files, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
+        long total = 0;
+        for (File f : files) {
+            total += f.length();
             //noinspection ResultOfMethodCallIgnored
-            files[i].delete();
+            if (total > IMAGE_CACHE_BYTES) f.delete();
         }
     }
 
@@ -932,6 +940,16 @@ final class Recs {
         if (!kinowatch && !kinopoisk && !youtube && !nature) return;
         fetchingFeeds = true;
         feedIo.execute(() -> {
+            try {
+                fetchFeeds(kinowatch, kinopoisk, youtube, nature);
+            } finally {
+                fetchingFeeds = false;   // even after an Error, or no feed would ever be fetched again
+            }
+        });
+    }
+
+    private void fetchFeeds(boolean kinowatch, boolean kinopoisk, boolean youtube, boolean nature) {
+        {
             boolean ok = true;
             try {
                 if (kinowatch) putFeed(KINOWATCH, kinowatch());
@@ -959,12 +977,16 @@ final class Recs {
                 ok = false;
                 AppLog.w("kinopoisk top: " + e.getMessage());
             }
-            feedsAt = System.currentTimeMillis();
-            feedsFailedAt = ok ? 0 : feedsAt;
+            // A failure (the TV just woke, Wi-Fi not up yet) is tried again in 5 minutes, not at the next half hour.
+            if (ok) {
+                feedsAt = System.currentTimeMillis();
+                feedsFailedAt = 0;
+            } else {
+                feedsFailedAt = System.currentTimeMillis();
+            }
             saveFeeds();
-            fetchingFeeds = false;
             notifyListeners();
-        });
+        }
     }
 
     private void putFeed(String pkg, List<Pick> list) {
@@ -1024,7 +1046,7 @@ final class Recs {
     /** KINO.WATCH's best match for a title (kino.pub search): {id, title, year}, or null. */
     JSONObject findKinopub(String title, int year, String kind) throws Exception {
         if (Config.KINOPUB_REFRESH_TOKEN.trim().isEmpty()) throw new IOException("KINO.WATCH не подключён");
-        String token = kinopubToken();
+        String token = sharedKinopubToken();
         JSONArray items = optItems(token, "/v1/items/search?perpage=12&q=" + URLEncoder.encode(title, "UTF-8"));
         String want = normalize(title);
         JSONObject best = null;
@@ -1110,14 +1132,44 @@ final class Recs {
         out.add(p);
     }
 
-    /** kino.pub's access token (a day long), refreshed with the saved refresh token, which changes every time. */
+    /**
+     * The access token as :home last shared it, for the voice assistant in the main process. The refresh token changes
+     * with every refresh, so only :home refreshes: two processes doing it would sign each other out.
+     */
+    private String sharedKinopubToken() throws IOException {
+        try {
+            JSONObject o = new JSONObject(new String(java.nio.file.Files.readAllBytes(new File(context.getFilesDir(),
+                    "kinopub-access.json").toPath()), StandardCharsets.UTF_8));
+            if (System.currentTimeMillis() < o.optLong("until")) return o.getString("access");
+        } catch (Exception ignored) {
+        }
+        throw new IOException("KINO.WATCH ещё не готов: открой главный экран и попробуй снова");
+    }
+
+    private void shareKinopubToken(String access, long until) {
+        try {
+            File f = new File(context.getFilesDir(), "kinopub-access.json"), tmp = new File(context.getFilesDir(), "kinopub-access.tmp");
+            String json = new JSONObject().put("access", access).put("until", until).toString();
+            if (f.exists() && json.equals(new String(java.nio.file.Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8))) return;
+            java.nio.file.Files.write(tmp.toPath(), json.getBytes(StandardCharsets.UTF_8));
+            //noinspection ResultOfMethodCallIgnored
+            tmp.renameTo(f);
+        } catch (Exception e) {
+            AppLog.w("kino.watch: token not shared: " + e.getMessage());
+        }
+    }
+
+    /** kino.pub's access token (a day long), refreshed with the saved refresh token, which changes every time. :home only. */
     private String kinopubToken() throws Exception {
         SharedPreferences sp = context.getSharedPreferences("kinopub", Context.MODE_PRIVATE);
         String seed = Config.KINOPUB_REFRESH_TOKEN.trim();
         if (!seed.equals(sp.getString("seed", ""))) sp.edit().clear().putString("seed", seed).putString("refresh", seed).commit();
         String access = sp.getString("access", null);
         long now = System.currentTimeMillis();
-        if (access != null && now < sp.getLong("until", 0)) return access;
+        if (access != null && now < sp.getLong("until", 0)) {
+            shareKinopubToken(access, sp.getLong("until", 0));
+            return access;
+        }
         String refresh = sp.getString("refresh", seed);
         HttpURLConnection c = (HttpURLConnection) new URL(KINOPUB + "/oauth2/token").openConnection();
         c.setConnectTimeout(8000);
@@ -1134,8 +1186,9 @@ final class Recs {
             if (code != 200) throw new IOException("sign-in expired (HTTP " + code + "): run tools/kinopub_token.py again");
             JSONObject o = new JSONObject(read(c.getInputStream()));
             access = o.getString("access_token");
-            sp.edit().putString("access", access).putString("refresh", o.optString("refresh_token", refresh))
-                    .putLong("until", now + Math.max(600, o.optLong("expires_in", 86400) - 600) * 1000L).commit();
+            long until = now + Math.max(600, o.optLong("expires_in", 86400) - 600) * 1000L;
+            sp.edit().putString("access", access).putString("refresh", o.optString("refresh_token", refresh)).putLong("until", until).commit();
+            shareKinopubToken(access, until);
             return access;
         } finally {
             c.disconnect();

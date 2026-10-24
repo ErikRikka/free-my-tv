@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="io.freemytv"
-    android:versionCode="224"
-    android:versionName="2.24">
+    android:versionCode="230"
+    android:versionName="2.3">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -83,7 +83,7 @@
             android:exported="true"
             android:permission="android.permission.BIND_VOICE_INTERACTION" />
 
-        <!-- The app's icon opens the settings (switch between Free My TV and the original home screen). -->
+        <!-- Instagram Reels from the shelf; exported only so `adb shell am start` can open it (it reads no intent data). -->
         <activity
             android:name=".ReelsActivity"
             android:process=":reels"
@@ -92,6 +92,7 @@
             android:screenOrientation="landscape"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|uiMode"
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
+        <!-- The app's icon opens the settings (switch between Free My TV and the original home screen). -->
         <activity
             android:name=".SettingsActivity"
             android:process=":home"

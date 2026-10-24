@@ -154,6 +154,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private float heroShift;    // a two-line title moves everything below it down by one line
     private static final float H_PLOT_TOP = 428, H_PLOT_W = 940;
     private String heroKey = "", heroTitleText = "", heroMetaText = "", heroPillText = "";
+    private Recs.Pick heroPick;
+    private String heroLanguage, heroPickMeta;
     private final RectF topCapsule = new RectF(), panelRect = new RectF(), pillRect = new RectF();
     private final Spring[] topFocus = new Spring[TOP_COUNT];
     private final RectF[] topRects = new RectF[TOP_COUNT];
@@ -168,7 +170,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             if (!running) return;
             long now = SystemClock.uptimeMillis();
             if (now - lastKeyAt >= 20 * 60_000L) ambient.start();   // 20 min without a key: a quiet fireplace
-            if (now - lastKeyAt >= 30_000 && now - shownAt >= 10_000 && cards.size() > 1 && !sheetOpen && !drawerOpen) {
+            // ...until the fireplace: after 20 idle minutes no one is looking, and each new pick is a download and a decode.
+            if (now - lastKeyAt >= 30_000 && now - lastKeyAt < 20 * 60_000L && now - shownAt >= 10_000 && cards.size() > 1
+                    && !sheetOpen && !drawerOpen) {
                 cardIndex = (cardIndex + 1) % cards.size();
                 showCurrentPick();
                 wake();
@@ -2851,8 +2855,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         okHeld = true;
         Recs.Pick p = cardIndex < cards.size() ? cards.get(cardIndex) : null;
         if (p == null) return;
-        boolean liked = Prefs.toggleLike(Recs.key(p));
-        recs.feedsChanged();
+        if (p.source != null) {   // a feed's pick (KINO.WATCH, YouTube, photos): likes steer only TMDB's picks
+            showToast(Ui.tr("Curtidas valem só para as sugestões do TMDB.", "Likes only steer the TMDB picks."));
+            wake();
+            return;
+        }
+        boolean liked = Prefs.toggleLike(Recs.key(p));   // the next picks list takes it in (Recs' stamp holds the likes)
         markLiked();
         heroDirty = true;
         click.open();
@@ -2926,9 +2934,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         int index = Math.min(cardIndex, cards.size() - 1);
         Recs.Pick p = cards.get(index);
-        String key = Recs.key(p) + Ui.language + p.meta;
-        if (!key.equals(heroKey)) {
-            heroKey = key;
+        // (checked by identity, no string built each frame: heroKey "" means "lay it out again")
+        if (heroKey.isEmpty() || p != heroPick || Ui.language != heroLanguage || p.meta != heroPickMeta) {
+            heroKey = "laid out";
+            heroPick = p;
+            heroLanguage = Ui.language;
+            heroPickMeta = p.meta;
             boolean liked = Prefs.likes().contains(Recs.key(p));
             // A long title goes on two lines, a bit smaller (cut with "…" after the second).
             String full = (liked ? "♥ " : "") + p.title;

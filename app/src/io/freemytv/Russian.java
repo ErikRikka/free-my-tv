@@ -14,6 +14,11 @@ final class Russian {
     static String text(String english) {
         switch (english) {
             case "Live TV": return "Телеканалы";
+            case "Saved": return "Сохранено";
+            case "Likes only steer the TMDB picks.": return "Лайки влияют только на подборку TMDB.";
+            case "Couldn't save": return "Не получилось сохранить";
+            case "Auto-scroll on": return "Автолистание включено";
+            case "Auto-scroll off": return "Автолистание выключено";
             case "All Apps": return "Приложения";
             case "Settings": return "Настройки";
             case "Home Settings": return "Главный экран";

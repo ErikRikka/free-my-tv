@@ -67,6 +67,7 @@ final class Symbols {
     }
 
     private static final Map<String, android.graphics.drawable.Drawable> ICONS = new HashMap<>();
+    private static final Map<android.graphics.drawable.Drawable, Integer> TINTS = new HashMap<>();
 
     /**
      * The line icons (Lucide, ISC license) as vectors in res/drawable/ic_<name>.xml (tools/svg_to_vector.py): drawn by
@@ -83,9 +84,18 @@ final class Symbols {
         }
         if (d == null) return false;
         synchronized (d) {
-            d.setTint(color);
-            d.setBounds(Math.round(cx - size / 2), Math.round(cy - size / 2), Math.round(cx + size / 2), Math.round(cy + size / 2));
+            // Bounds and tint set only when they change: setTint each frame allocates a new tint filter.
+            int base = Math.max(1, Math.round(size));
+            if (d.getBounds().width() != base) d.setBounds(0, 0, base, base);
+            Integer last = TINTS.get(d);
+            if (last == null || last != color) {
+                d.setTint(color);
+                TINTS.put(d, color);
+            }
+            int save = canvas.save();
+            canvas.translate(cx - base / 2f, cy - base / 2f);
             d.draw(canvas);
+            canvas.restoreToCount(save);
         }
         return true;
     }

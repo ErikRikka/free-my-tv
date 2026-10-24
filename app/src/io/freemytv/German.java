@@ -7,6 +7,11 @@ final class German {
     static String text(String english) {
         switch (english) {
             case "Live TV": return "Live-TV";
+            case "Saved": return "Gespeichert";
+            case "Likes only steer the TMDB picks.": return "Likes steuern nur die TMDB-Vorschläge.";
+            case "Couldn't save": return "Speichern fehlgeschlagen";
+            case "Auto-scroll on": return "Automatisches Weiterblättern an";
+            case "Auto-scroll off": return "Automatisches Weiterblättern aus";
             case "All Apps": return "Alle Apps";
             case "Settings": return "Einstellungen";
             case "Home Settings": return "Start-Einstellungen";

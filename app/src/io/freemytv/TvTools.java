@@ -29,6 +29,7 @@ final class TvTools {
 
     private static final String[][] NAMES = {
             {"com.google.android.youtube.tv", "YouTube", "ютуб, youtube, ю туб"},
+            {ReelsActivity.SHELF_ID, "Instagram Reels", "рилсы, рилз, инстаграм, инста, reels"},
             {"watch.kino", "KINO.WATCH", "киновотч, кино воч, кинопаб, kino.pub, kinopub"},
             {"ru.kinopoisk.tv", "Кинопоиск", "kinopoisk, кинопоиск"},
             {"com.redshieldvpn.app", "Red Shield VPN", "впн, vpn, ред шилд"},
@@ -72,7 +73,8 @@ final class TvTools {
                 new JSONObject().put("percent", integer("Уровень 0-100, либо -1 если используется step"))
                         .put("step", new JSONObject().put("type", "string").put("enum", new JSONArray().put("louder").put("quieter").put("none"))
                                 .put("description", "louder громче, quieter тише, none если задан percent")), "percent"));
-        t.put(fn("weather", "Погода сейчас, на сегодня и на завтра: здесь (Санкт-Петербург) или в любом городе мира.",
+        t.put(fn("weather", "Погода сейчас, на сегодня и на завтра: здесь" + (Config.CITY.isEmpty() ? "" : " (" + Config.CITY + ")")
+                + " или в любом городе мира.",
                 new JSONObject().put("city", str("Город, если спрашивают не про здесь; иначе пусто"))));
         t.put(fn("remember", "Запомнить надолго факт о собеседнике или его просьбу: имя, вкусы, близких, привычки, планы.",
                 new JSONObject().put("fact", str("Факт короткой фразой от третьего лица, например «Его зовут Эрик»")), "fact"));
@@ -136,6 +138,7 @@ final class TvTools {
                 out.add(new String[] {pkg, label});
             }
         }
+        out.add(new String[] {ReelsActivity.SHELF_ID, "Instagram Reels"});   // ours: a screen of this app, not an app
         return out;
     }
 
@@ -239,7 +242,7 @@ final class TvTools {
         if (query.trim().isEmpty()) return "Пустой запрос.";
         JSONObject req = new JSONObject().put("model", "gpt-5.4-mini").put("reasoning", new JSONObject().put("effort", "none"))
                 .put("tools", new JSONArray().put(new JSONObject().put("type", "web_search").put("search_context_size", "low").put("user_location", new JSONObject()
-                        .put("type", "approximate").put("country", "RU").put("city", "Saint Petersburg"))))
+                        .put("type", "approximate").put("country", Config.TMDB_REGION).put("city", Config.CITY))))
                 .put("instructions", "Найди ответ в интернете и перескажи его по-русски для голосового помощника: 2-5 коротких "
                         + "предложений, только факты, с датами, если важны, без ссылок и markdown. В конце коротко назови источник.")
                 .put("input", query);
