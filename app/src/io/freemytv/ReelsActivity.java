@@ -108,6 +108,11 @@ public class ReelsActivity extends Activity {
             + "set(cap,'-webkit-box-orient','vertical');set(cap,'overflow','hidden');set(cap,'white-space','normal');set(cap,'height','auto');"
             + "set(cap,'max-height',(2*lh)+'px');for(var p=cap.parentElement,k=0;k<3&&p;k++,p=p.parentElement){"
             + "if(p.__fmtvGrown||p.getBoundingClientRect().height<40){p.__fmtvGrown=1;set(p,'height','auto');}}}"   // the line-high boxes only
+            // The site makes each reel the window's height less its tab bar's: how much that is, so the page can be that much
+            // taller than the screen and a reel fill it all.
+            + "setInterval(function(){var vs=[].slice.call(document.querySelectorAll('video')).filter(function(v){return v.getBoundingClientRect().height>50;})"
+            + ".map(function(v){return v.getBoundingClientRect().top;}).sort(function(a,b){return a-b;});for(var i=0;i+1<vs.length;i++){var g=innerHeight-(vs[i+1]-vs[i]);"
+            + "if(vs[i+1]-vs[i]>innerHeight*0.5){if(g>=0&&g<innerHeight*0.3)FMTV.gap(Math.round(g*devicePixelRatio));return;}}},1000);"
             // The tab bar (home, search, reels, messages, profile) hidden too: this screen is the reels and nothing else.
             // (only a low strip along the bottom: a Home icon elsewhere must not take the whole page with it)
             + "function fmtvNoTabs(){[].forEach.call(document.querySelectorAll('svg[aria-label=\\\"Home\\\"]'),function(n){"
@@ -168,6 +173,17 @@ public class ReelsActivity extends Activity {
                 if (now - reloadedAt < 8000) return;
                 reloadedAt = now;
                 ui.post(() -> web.loadUrl(url));
+            }
+
+            @JavascriptInterface public void gap(int px) {
+                ui.post(() -> {
+                    int want = getResources().getDisplayMetrics().heightPixels + px;
+                    android.view.ViewGroup.LayoutParams lp = web.getLayoutParams();
+                    if (lp.height != want) {
+                        lp.height = want;
+                        web.setLayoutParams(lp);
+                    }
+                });
             }
 
             @JavascriptInterface public void next() {
