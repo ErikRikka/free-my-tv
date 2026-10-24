@@ -17,7 +17,7 @@ import android.webkit.WebViewClient;
 /**
  * Instagram's Reels on the TV, through its website. The phone apps play reels with the TV's VP9 decoder, which turns many
  * of them into smears; here the page is told the TV can't play VP9, AV1 or HEVC, so Instagram sends H.264, which it plays
- * well. The remote works as on any TV app: Up and Down go through the reels, OK pauses, Back leaves. Not signed in, it
+ * well. The remote works as on any TV app: Up and Down go through the reels, Right likes, OK pauses, Back leaves. Not signed in, it
  * opens on the sign-in page; off the reels the arrows move a pointer and OK taps under it (fields, buttons, the
  * "I'm not a robot" box).
  */
@@ -48,11 +48,16 @@ public class ReelsActivity extends Activity {
             + "var n=vs[i+dir];if(n){n.scrollIntoView({block:'center',behavior:'smooth'});return;}"
             + "var s=document.scrollingElement;(c[1]?c[1].closest('main')||s:s);window.scrollBy({top:dir*innerHeight,behavior:'smooth'});"
             + "var e=document.querySelectorAll('[style*=\"scroll-snap\"],main div');for(var k=0;k<e.length;k++){var el=e[k];if(el.scrollHeight>el.clientHeight+50&&getComputedStyle(el).overflowY!=='visible'){el.scrollBy({top:dir*el.clientHeight,behavior:'smooth'});break;}}};"
+            // Right: the current reel's heart, only if it isn't liked yet (pressing again doesn't take the like back).
+            + "window.fmtvLike=function(){var v=current()[1];if(!v)return 'none';for(var el=v;el;el=el.parentElement){"
+            + "if(el.querySelector('svg[aria-label=\\\"Unlike\\\"]'))return 'already';"
+            + "var h=el.querySelector('svg[aria-label=\\\"Like\\\"]');if(h){(h.closest('[role=button],button')||h).click();return 'liked';}}return 'none';};"
             + "window.fmtvToggle=function(){var v=current()[1];if(!v)return;v.muted=false;if(v.paused)v.play();else v.pause();};"
             + "})();";
 
     private WebView web;
     private View pointer;
+    private android.widget.TextView heart;
     private float px = -1, py = -1;
     private volatile boolean typing, dialog;
 
@@ -68,7 +73,9 @@ public class ReelsActivity extends Activity {
         // into it whole), drawn a little larger than a phone would so the page is about 400 points wide.
         android.content.res.Configuration phone = new android.content.res.Configuration(getResources().getConfiguration());
         phone.densityDpi = 240;
-        web = new WebView(createConfigurationContext(phone));
+        phone.uiMode = (phone.uiMode & ~android.content.res.Configuration.UI_MODE_NIGHT_MASK) | android.content.res.Configuration.UI_MODE_NIGHT_YES;
+        // A dark theme around it: the page then asks for Instagram's dark look (prefers-color-scheme).
+        web = new WebView(new android.view.ContextThemeWrapper(createConfigurationContext(phone), android.R.style.Theme_Black_NoTitleBar));
         web.setBackgroundColor(Color.BLACK);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -122,6 +129,14 @@ public class ReelsActivity extends Activity {
                 c.drawCircle(r, r, r * 0.7f, ring);
             }
         };
+        heart = new android.widget.TextView(this);
+        heart.setText("♥");
+        heart.setTextColor(0xFFFF3040);
+        heart.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, dm.heightPixels * 0.22f);
+        heart.setShadowLayer(dm.heightPixels * 0.02f, 0, 0, 0x80000000);
+        heart.setAlpha(0f);
+        root.addView(heart, new android.widget.FrameLayout.LayoutParams(android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.Gravity.CENTER));
         int size = Math.round(getResources().getDisplayMetrics().heightPixels * 0.035f);
         root.addView(pointer, new android.widget.FrameLayout.LayoutParams(size, size));
         pointer.setVisibility(View.GONE);
@@ -134,6 +149,15 @@ public class ReelsActivity extends Activity {
     private boolean onReels() {
         String url = web.getUrl();
         return !typing && !dialog && url != null && url.contains("instagram.com/reel");
+    }
+
+    /** A big heart over the reel for a moment: the like went through. */
+    private void showHeart() {
+        heart.setScaleX(0.6f);
+        heart.setScaleY(0.6f);
+        heart.setAlpha(1f);
+        heart.animate().scaleX(1.15f).scaleY(1.15f).setDuration(220).withEndAction(() ->
+                heart.animate().alpha(0f).setStartDelay(350).setDuration(300).start()).start();
     }
 
     private void movePointer(int key, int repeat) {
@@ -192,11 +216,14 @@ public class ReelsActivity extends Activity {
     @Override public boolean dispatchKeyEvent(KeyEvent e) {
         int k = e.getKeyCode();
         if (onReels()) pointer.setVisibility(View.GONE);
-        if (onReels() && (k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_DPAD_UP
+        if (onReels() && (k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_RIGHT
                 || k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER)) {
             if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
                 web.evaluateJavascript(SCRIPT, null);
-                if (k == KeyEvent.KEYCODE_DPAD_DOWN) web.evaluateJavascript("fmtvMove(1)", null);
+                if (k == KeyEvent.KEYCODE_DPAD_RIGHT) web.evaluateJavascript("fmtvLike()", r -> {
+                    if (!r.contains("none")) showHeart();
+                });
+                else if (k == KeyEvent.KEYCODE_DPAD_DOWN) web.evaluateJavascript("fmtvMove(1)", null);
                 else if (k == KeyEvent.KEYCODE_DPAD_UP) web.evaluateJavascript("fmtvMove(-1)", null);
                 else web.evaluateJavascript("fmtvToggle()", null);
             }
