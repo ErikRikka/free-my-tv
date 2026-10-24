@@ -85,6 +85,27 @@ public class ReelsActivity extends Activity {
             // A reel that has come to the middle and sits there not loading for two seconds (not paused by you) is started.
             + "setInterval(function(){var c=current()[1];if(!c)return;if(c!==window.__fmtvSeen){window.__fmtvSeen=c;window.__fmtvSince=Date.now();return;}"
             + "if(c.paused&&c.readyState<2&&c!==window.__fmtvUserPaused&&Date.now()-window.__fmtvSince>2000){window.__fmtvSince=Date.now();c.play();}},500);"
+            // Only what works from the sofa: the heart and its count (the other buttons and Follow hidden, so the heart sits
+            // lower, where they were), and the caption as two lines, without "… more".
+            + "function fmtvTidy(el){var like=el.querySelector('svg[aria-label=Like],svg[aria-label=Unlike]');if(!like)return;"
+            + "if(!el.__fmtvTidy){var item=like;while(item.parentElement&&!item.parentElement.querySelector('svg[aria-label=Comment],svg[aria-label=Share],svg[aria-label=More]'))item=item.parentElement;"
+            + "if(!item.parentElement)return;[].forEach.call(item.parentElement.children,function(c){if(c!==item)c.style.display='none';});"
+            + "[].forEach.call(el.querySelectorAll('div,[role=button],button'),function(b){if(b.innerText==='Follow'&&b.children.length<3)b.style.display='none';});el.__fmtvTidy=1;}"
+            // The caption already holds its text (a line of it shown, then "… more"): two lines of it, "… more" hidden.
+            + "var cap=fmtvCaption(el);if(cap)fmtvTwoLines(cap);}"
+            + "function fmtvCaption(el){var m=[].find.call(el.querySelectorAll('span'),function(b){var t=(b.innerText||'').trim();return t.length<8&&/more$/.test(t);});"
+            + "var c=m&&m.parentElement;return c&&c.children.length===2&&c.children[1]===m?c:null;}"
+            // (the site fixes it, and the boxes around it, at one line's height: theirs give way to ours)
+            + "function fmtvTwoLines(cap){var t=cap.children[0];"
+            + "function set(e,k,v){if(e.style.getPropertyValue(k)!==v)e.style.setProperty(k,v,'important');}"
+            + "set(cap.children[1],'display','none');set(t,'white-space','normal');set(t,'display','inline');"
+            + "var lh=parseFloat(getComputedStyle(cap).lineHeight)||18;set(cap,'display','-webkit-box');set(cap,'-webkit-line-clamp','2');"
+            + "set(cap,'-webkit-box-orient','vertical');set(cap,'overflow','hidden');set(cap,'white-space','normal');set(cap,'height','auto');"
+            + "set(cap,'max-height',(2*lh)+'px');for(var p=cap.parentElement,k=0;k<3&&p;k++,p=p.parentElement){"
+            + "if(p.__fmtvGrown||p.getBoundingClientRect().height<40){p.__fmtvGrown=1;set(p,'height','auto');}}}"   // the line-high boxes only
+            + "setInterval(function(){var c=current()[1];if(!c)return;var vs=[].slice.call(document.querySelectorAll('video'))"
+            + ".sort(function(a,b){return a.getBoundingClientRect().top-b.getBoundingClientRect().top;}),i=vs.indexOf(c);"
+            + "fmtvTidy(c.parentElement);if(vs[i+1])fmtvTidy(vs[i+1].parentElement);},300);"
             // What's on screen, for the assistant: author, music, caption.
             + "setInterval(function(){var v=current()[1];if(!v)return;var el=v.parentElement;FMTV.reel(location.href,(el.innerText||'').slice(0,600));},2000);"
             + "window.fmtvToggle=function(){var v=current()[1];if(!v)return;v.muted=false;if(v.paused){window.__fmtvUserPaused=null;v.play();}"
@@ -355,13 +376,14 @@ public class ReelsActivity extends Activity {
      */
     private void go(int dir) {
         android.util.DisplayMetrics m = getResources().getDisplayMetrics();
-        drag(m.widthPixels / 2f, dir * m.heightPixels * 0.6f);
+        drag(m.widthPixels / 2f, dir * m.heightPixels * 0.5f);
     }
 
     /** A finger dragging the page up by dy (down for a negative one), in real time, a step a frame, as a finger would. */
     private void drag(float x, float dy) {
         android.util.DisplayMetrics m = getResources().getDisplayMetrics();
-        float y0 = m.heightPixels / 2f + dy / 2, y1 = m.heightPixels / 2f - dy / 2, wx = x - web.getLeft();
+        // Around the upper middle of the reel: a touch that starts on the caption below goes to it, not to the list.
+        float mid = m.heightPixels * 0.42f, y0 = mid + dy / 2, y1 = mid - dy / 2, wx = x - web.getLeft();
         long start = android.os.SystemClock.uptimeMillis();
         int steps = 6;   // a quick flick: the site turns the reel sooner
         for (int i = 0; i <= steps + 1; i++) {
