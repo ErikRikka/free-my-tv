@@ -27,6 +27,7 @@ public final class TouchServer {
         Class<?> im = Class.forName("android.hardware.input.InputManager");
         inputManager = im.getMethod("getInstance").invoke(null);
         inject = im.getMethod("injectInputEvent", InputEvent.class, int.class);
+        System.err.println("started, port " + port);
         try (Socket app = new Socket("127.0.0.1", port)) {
             BufferedReader in = new BufferedReader(new InputStreamReader(app.getInputStream()));
             if (!key.equals(in.readLine())) return;
@@ -38,7 +39,8 @@ public final class TouchServer {
                     } else if (w[0].equals("swipe") && w.length == 6) {
                         swipe(f(w[1]), f(w[2]), f(w[3]), f(w[4]), (int) f(w[5]));
                     }
-                } catch (Exception ignored) {
+                } catch (Exception e) {
+                    System.err.println(line + ": " + e);   // into /data/local/tmp/freemytv-touch.log
                 }
             }
         }

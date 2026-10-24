@@ -41,6 +41,27 @@ final class Reels {
         showPointer(s, ours(p) && !reels);
     }
 
+    /** The app already in front when the service starts (it only hears of the ones that open after). */
+    static void findFront(AccessibilityService s) {
+        Context app = s.getApplicationContext();
+        android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+        TOUCH.execute(() -> {
+            try {
+                if (adb == null) adb = Adb.connect(app, 0, null);
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("mResumedActivity: ActivityRecord\\{\\S+ \\S+ ([\\w.]+)/")
+                        .matcher(adb.shell("dumpsys activity activities | grep mResumedActivity"));
+                if (m.find()) {
+                    String pkg = m.group(1);
+                    main.post(() -> {
+                        if (front.isEmpty()) windowChanged(s, pkg, null);
+                    });
+                }
+            } catch (Exception e) {
+                AppLog.w("reels: front app: " + e.getMessage());
+            }
+        });
+    }
+
     private static boolean ours(String pkg) {
         return INSTAGRAM.equals(pkg) || LITE.equals(pkg);
     }
@@ -115,6 +136,7 @@ final class Reels {
                 if (touchOut == null) openTouch(app);
                 touchOut.write(command + "\n");
                 touchOut.flush();
+                AppLog.w("reels: " + command);
                 return;
             } catch (Exception e) {
                 AppLog.w("reels: touch server: " + e.getMessage());
@@ -130,7 +152,7 @@ final class Reels {
             listen.setSoTimeout(5000);
             String key = Long.toHexString(new java.security.SecureRandom().nextLong()) + Long.toHexString(System.nanoTime());
             shell(app, "CLASSPATH=" + app.getApplicationInfo().sourceDir + " setsid nohup app_process /system/bin "
-                    + TouchServer.class.getName() + " " + listen.getLocalPort() + " " + key + " >/dev/null 2>&1 &");
+                    + TouchServer.class.getName() + " " + listen.getLocalPort() + " " + key + " >/data/local/tmp/freemytv-touch.log 2>&1 &");
             java.net.Socket server = listen.accept();
             server.setTcpNoDelay(true);
             touchOut = new java.io.OutputStreamWriter(server.getOutputStream());
