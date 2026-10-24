@@ -132,6 +132,10 @@ public class ReelsActivity extends Activity {
             py = m.heightPixels / 2f;
         }
         float step = m.heightPixels * (repeat < 3 ? 0.03f : repeat < 10 ? 0.06f : 0.1f);   // faster the longer it's held
+        if ((key == KeyEvent.KEYCODE_DPAD_DOWN && py >= m.heightPixels - 1) || (key == KeyEvent.KEYCODE_DPAD_UP && py <= 0)) {
+            drag(px, key == KeyEvent.KEYCODE_DPAD_DOWN ? m.heightPixels * 0.3f : -m.heightPixels * 0.3f);   // at the edge: the page moves
+            return;
+        }
         if (key == KeyEvent.KEYCODE_DPAD_LEFT) px -= step;
         if (key == KeyEvent.KEYCODE_DPAD_RIGHT) px += step;
         if (key == KeyEvent.KEYCODE_DPAD_UP) py -= step;
@@ -140,6 +144,23 @@ public class ReelsActivity extends Activity {
         py = Math.max(0, Math.min(m.heightPixels - 1, py));
         pointer.setTranslationX(px - pointer.getWidth() / 2f);
         pointer.setTranslationY(py - pointer.getHeight() / 2f);
+    }
+
+    /** A finger dragging the page up by dy (down for a negative one), so what's below the edge comes into view. */
+    private void drag(float x, float dy) {
+        android.util.DisplayMetrics m = getResources().getDisplayMetrics();
+        float y0 = m.heightPixels / 2f + dy / 2, y1 = m.heightPixels / 2f - dy / 2;
+        long t = android.os.SystemClock.uptimeMillis();
+        int steps = 8;
+        for (int i = 0; i <= steps + 1; i++) {
+            int action = i == 0 ? android.view.MotionEvent.ACTION_DOWN : i > steps ? android.view.MotionEvent.ACTION_UP
+                    : android.view.MotionEvent.ACTION_MOVE;
+            float y = y0 + (y1 - y0) * Math.min(i, steps) / steps;
+            android.view.MotionEvent ev = android.view.MotionEvent.obtain(t, t + i * 30L, action, x, y, 0);
+            ev.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);
+            web.dispatchTouchEvent(ev);
+            ev.recycle();
+        }
     }
 
     /** A finger's tap where the pointer is: the page (and a check box inside it) takes it as a touch. */
