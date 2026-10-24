@@ -90,7 +90,12 @@ public class ReelsActivity extends Activity {
             + "function fmtvTidy(el){var like=el.querySelector('svg[aria-label=Like],svg[aria-label=Unlike]');if(!like)return;"
             + "if(!el.__fmtvTidy){var item=like;while(item.parentElement&&!item.parentElement.querySelector('svg[aria-label=Comment],svg[aria-label=Share],svg[aria-label=More]'))item=item.parentElement;"
             + "if(!item.parentElement)return;[].forEach.call(item.parentElement.children,function(c){if(c!==item)c.style.display='none';});"
-            + "[].forEach.call(el.querySelectorAll('div,[role=button],button'),function(b){if(b.innerText==='Follow'&&b.children.length<3)b.style.display='none';});el.__fmtvTidy=1;}"
+            + "[].forEach.call(el.querySelectorAll('div,[role=button],button'),function(b){if(b.innerText==='Follow'&&b.children.length<3)b.style.display='none';});"
+            + "el.__fmtvTidy=1;el.__fmtvHeart=item;}"
+            // the heart level with the author's name, a little lower (its row moves with the caption's length: measured each time)
+            + "var h=el.__fmtvHeart,au=[].find.call(el.querySelectorAll('a[href]'),function(a){return /^\\/[^\\/]+\\/reels\\/$/.test(a.getAttribute('href'));});"
+            + "if(h&&au){var hr=h.getBoundingClientRect(),ar=au.getBoundingClientRect(),now=h.__fmtvShift||0;"
+            + "var dy=Math.round(ar.top+ar.height/2-(hr.top-now+hr.height/2))+10;if(dy!==now){h.__fmtvShift=dy;h.style.transform='translateY('+dy+'px)';}}"
             // The caption already holds its text (a line of it shown, then "… more"): two lines of it, "… more" hidden.
             + "var cap=fmtvCaption(el);if(cap)fmtvTwoLines(cap);}"
             + "function fmtvCaption(el){var m=[].find.call(el.querySelectorAll('span'),function(b){var t=(b.innerText||'').trim();return t.length<8&&/more$/.test(t);});"
@@ -103,7 +108,12 @@ public class ReelsActivity extends Activity {
             + "set(cap,'-webkit-box-orient','vertical');set(cap,'overflow','hidden');set(cap,'white-space','normal');set(cap,'height','auto');"
             + "set(cap,'max-height',(2*lh)+'px');for(var p=cap.parentElement,k=0;k<3&&p;k++,p=p.parentElement){"
             + "if(p.__fmtvGrown||p.getBoundingClientRect().height<40){p.__fmtvGrown=1;set(p,'height','auto');}}}"   // the line-high boxes only
-            + "setInterval(function(){var c=current()[1];if(!c)return;var vs=[].slice.call(document.querySelectorAll('video'))"
+            // The tab bar (home, search, reels, messages, profile) hidden too: this screen is the reels and nothing else.
+            // (only a low strip along the bottom: a Home icon elsewhere must not take the whole page with it)
+            + "function fmtvNoTabs(){[].forEach.call(document.querySelectorAll('svg[aria-label=\\\"Home\\\"]'),function(n){"
+            + "while(n&&n.getBoundingClientRect().width<innerWidth*0.9)n=n.parentElement;if(!n||n===document.body)return;var r=n.getBoundingClientRect();"
+            + "if(r.height>0&&r.height<120&&r.top>innerHeight*0.6)n.style.setProperty('display','none','important');});}"
+            + "setInterval(function(){fmtvNoTabs();var c=current()[1];if(!c)return;var vs=[].slice.call(document.querySelectorAll('video'))"
             + ".sort(function(a,b){return a.getBoundingClientRect().top-b.getBoundingClientRect().top;}),i=vs.indexOf(c);"
             + "fmtvTidy(c.parentElement);if(vs[i+1])fmtvTidy(vs[i+1].parentElement);},300);"
             // What's on screen, for the assistant: author, music, caption.
