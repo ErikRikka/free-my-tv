@@ -9,17 +9,11 @@ import android.view.accessibility.AccessibilityEvent;
  * system waits for it on every key (up to half a second), so it runs in a process of its own and does next to nothing.
  */
 public class RemoteKeyService extends AccessibilityService {
-    @Override protected void onServiceConnected() {
-        Reels.findFront(this);
-    }
-
     @Override protected boolean onKeyEvent(KeyEvent event) {
-        return RemoteKeys.onKey(this, event) || Reels.onKey(this, event);
+        return RemoteKeys.onKey(this, event);
     }
 
-    @Override public void onAccessibilityEvent(AccessibilityEvent event) {
-        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) Reels.windowChanged(this, event.getPackageName(), event.getClassName());
-    }
+    @Override public void onAccessibilityEvent(AccessibilityEvent event) {}
 
     @Override public void onInterrupt() {}
 }

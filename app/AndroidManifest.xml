@@ -16,8 +16,6 @@
     <queries>
         <package android:name="com.netflix.ninja" />
         <package android:name="com.google.android.youtube.tv" />
-        <package android:name="com.instagram.android" />
-        <package android:name="com.instagram.lite" />
         <package android:name="com.amazon.amazonvideo.livingroom" />
         <package android:name="com.disney.disneyplus" />
         <package android:name="com.wbd.stream" />
@@ -86,6 +84,14 @@
             android:permission="android.permission.BIND_VOICE_INTERACTION" />
 
         <!-- The app's icon opens the settings (switch between Free My TV and the original home screen). -->
+        <activity
+            android:name=".ReelsActivity"
+            android:process=":reels"
+            android:exported="true"
+            android:label="Reels"
+            android:screenOrientation="landscape"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|uiMode"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
         <activity
             android:name=".SettingsActivity"
             android:process=":home"

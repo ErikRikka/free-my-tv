@@ -83,8 +83,7 @@ final class HomeApps {
     private static final String[][] SHELF = {
         {"netflix", "Netflix", "com.netflix.ninja", "E50914", "", "1"},
         {"youtube", "YouTube", "com.google.android.youtube.tv", "FF0033", "play", "1"},
-        {"instagram", "Instagram", "com.instagram.android", "E1306C", "", "1"},
-        {"instagramlite", "Instagram Lite", "com.instagram.lite", "E1306C", "", "1"},
+        {"reels", "Reels", ReelsActivity.SHELF_ID, "E1306C", "", "1"},
         {"prime", "Prime Video", "com.amazon.amazonvideo.livingroom", "1A98FF", "tint", "0.96"},
         {"disney", "Disney+", "com.disney.disneyplus", "1838C8", "", "1"},
         {"max", "Max", "com.wbd.stream", "6C3BE0", "", "1.32"},
@@ -164,12 +163,7 @@ final class HomeApps {
     /** The shelf's packages in order: the user's list (Settings > Shelf), or the built-in one. */
     static List<String> shelfPackages(Context c) {
         List<String> custom = Prefs.shelf();
-        if (custom != null && Prefs.addOnce("instagram", custom, "com.instagram.android", "com.google.android.youtube.tv",
-                launchIntent(c.getPackageManager(), "com.instagram.android") != null)) {
-            custom = Prefs.shelf();
-        }
-        if (custom != null && Prefs.addOnce("instagramlite", custom, "com.instagram.lite", "com.instagram.android",
-                launchIntent(c.getPackageManager(), "com.instagram.lite") != null)) {
+        if (custom != null && Prefs.addOnce("reels", custom, ReelsActivity.SHELF_ID, "com.google.android.youtube.tv", true)) {
             custom = Prefs.shelf();
         }
         if (custom != null) return custom;
@@ -378,7 +372,7 @@ final class HomeApps {
         Intent intent;
         switch (it.kind) {
             case APP:
-                intent = Reels.opensOnReels(it.pkg) ? Reels.reelsIntent(it.pkg) : launchIntent(a.getPackageManager(), it.pkg);
+                intent = launchIntent(a.getPackageManager(), it.pkg);
                 if (intent != null) intent.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
                 break;
             case LIVE_TV:
@@ -458,6 +452,7 @@ final class HomeApps {
     }
 
     static Intent launchIntent(PackageManager pm, String pkg) {
+        if (ReelsActivity.SHELF_ID.equals(pkg)) return new Intent().setClassName("io.freemytv", ReelsActivity.class.getName());   // ours, not an app
         Intent intent = pm.getLeanbackLaunchIntentForPackage(pkg);
         return intent != null ? intent : pm.getLaunchIntentForPackage(pkg);
     }
