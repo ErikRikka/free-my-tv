@@ -40,12 +40,22 @@ public class ReelsActivity extends Activity {
             + "return bad.test(ct)?Promise.resolve({supported:false,smooth:false,powerEfficient:false}):d(c);};}"
             + "document.addEventListener('play',function(e){var v=e.target;if(v.tagName==='VIDEO'){v.muted=false;v.volume=1;}},true);"
             // Instagram mutes what plays by itself and keeps it that way: the sound goes back on every second.
-            + "setInterval(function(){[].forEach.call(document.querySelectorAll('video'),function(v){if(!v.paused&&v.muted){v.muted=false;v.volume=1;}});},1000);"
+            + "fmtvEvery(function(){[].forEach.call(document.querySelectorAll('video'),function(v){if(!v.paused&&v.muted){v.muted=false;v.volume=1;}});},1000);"
             + "function typing(){var a=document.activeElement;return !!a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.isContentEditable);}"
             + "document.addEventListener('focusin',function(){FMTV.typing(typing());},true);"
-            + "setInterval(function(){FMTV.dialog(!!document.querySelector('[role=dialog]'));},400);"   // a question over the reels
+            + "fmtvEvery(function(){FMTV.dialog(!!document.querySelector('[role=dialog]'));},400);"   // a question over the reels
             + "document.addEventListener('focusout',function(){setTimeout(function(){FMTV.typing(typing());},0);},true);"
-            + "function current(){var vs=[].slice.call(document.querySelectorAll('video')),mid=innerHeight/2,best=null,bd=1e9;"
+            // The page's main thread is the TV's bottleneck (under a swipe it has next to no idle time), and each measuring
+            // call makes it lay the page out again: the current reel and the list in order are worked out at most every
+            // 150 ms and shared, and the regular jobs (fmtvEvery) wait while the list is moving.
+            + "function current(){var t=performance.now();if(!window.__fmtvC||t-window.__fmtvCt>150){window.__fmtvC=currentNow();window.__fmtvCt=t;}return window.__fmtvC;}"
+            + "function fmtvVideos(){var t=performance.now();if(!window.__fmtvV||t-window.__fmtvVt>150){var l=[].map.call(document.querySelectorAll('video'),"
+            + "function(v){return [v.getBoundingClientRect().top,v];});l.sort(function(a,b){return a[0]-b[0];});"
+            + "window.__fmtvV=l.map(function(x){return x[1];});window.__fmtvVt=t;}return window.__fmtvV;}"
+            + "window.__fmtvMoved=0;function fmtvMark(){window.__fmtvMoved=performance.now();}"
+            + "document.addEventListener('scroll',fmtvMark,true);document.addEventListener('touchstart',fmtvMark,true);"
+            + "function fmtvEvery(fn,ms){setInterval(function(){if(performance.now()-window.__fmtvMoved>600)fn();},ms);}"
+            + "function currentNow(){var vs=[].slice.call(document.querySelectorAll('video')),mid=innerHeight/2,best=null,bd=1e9;"
             + "vs.forEach(function(v){var r=v.getBoundingClientRect();if(r.height<50)return;var dd=Math.abs(r.top+r.height/2-mid);if(dd<bd){bd=dd;best=v;}});return [vs,best];}"
             // Right: the current reel's heart, a like, or the like taken back if it's there.
             + "window.fmtvLike=function(){var v=current()[1];if(!v)return 'none';for(var el=v;el;el=el.parentElement){"
@@ -63,20 +73,15 @@ public class ReelsActivity extends Activity {
             + "window.fmtvAuto=false;document.addEventListener('timeupdate',function(e){var v=e.target;if(!fmtvAuto||v!==current()[1])return;"
             + "if(v.currentTime<1)v.__fmtvNext=0;if(v.duration&&v.currentTime>v.duration-0.4&&!v.__fmtvNext){v.__fmtvNext=1;FMTV.next();}},true);"
             // How far the reel is, and where its bottom edge is (the bar is drawn there, the site has none on phones).
-            + "setInterval(function(){var v=current()[1];if(!v||!v.duration)return FMTV.progress(-1,0);var r=v.getBoundingClientRect();"
-            // Its tab bar: up from the Home icon to the strip as wide as the page.
-            + "var b=Math.min(r.bottom,innerHeight),n=document.querySelector('svg[aria-label=\\\"Home\\\"]');"
-            + "while(n&&n.getBoundingClientRect().width<innerWidth*0.9)n=n.parentElement;"
-            + "if(n){var t=n.getBoundingClientRect().top;if(t>innerHeight*0.6&&t<b)b=t;}"
-            + "FMTV.progress(v.currentTime/v.duration,b/innerHeight);},200);"
+            + "fmtvEvery(function(){var v=current()[1];if(!v||!v.duration)return FMTV.progress(-1,0);"
+            + "FMTV.progress(v.currentTime/v.duration,Math.min(v.getBoundingClientRect().bottom,innerHeight)/innerHeight);},250);"
             // The TV has five video decoders and the site keeps hold of them; when a reel can't get one ("trouble playing"),
             // the page is opened again on that same reel, which lets them all go.
-            + "setInterval(function(){var v=current()[1];"
-            + "if(v&&(v.error||/trouble playing this video/i.test(v.parentElement.innerText||'')))FMTV.reload();},1000);"
+            + "fmtvEvery(function(){var v=current()[1];"
+            + "if(v&&(v.error||(v.readyState<2&&/trouble playing this video/i.test(v.parentElement.innerText||''))))FMTV.reload();},1000);"
             // The site keeps every reel it has played loaded, each holding one of the TV's five video decoders: a loaded one
             // more than one away lets go of its file (kept, and given back when you come next to it again).
-            + "setInterval(function(){var c=current()[1];if(!c)return;var vs=[].slice.call(document.querySelectorAll('video'))"
-            + ".sort(function(a,b){return a.getBoundingClientRect().top-b.getBoundingClientRect().top;}),i=vs.indexOf(c);"
+            + "fmtvEvery(function(){var c=current()[1];if(!c)return;var vs=fmtvVideos(),i=vs.indexOf(c);"
             + "var nx=vs[i+1];if(nx&&nx.getAttribute('src')&&nx.preload!=='auto'){nx.preload='auto';nx.load();}"   // the next one loads ahead
             + "vs.forEach(function(v,j){var src=v.getAttribute('src');"
             + "if(Math.abs(j-i)>1&&src&&v.readyState>0){v.__fmtvSrc=src;v.pause();v.removeAttribute('src');v.load();}"
@@ -84,7 +89,7 @@ public class ReelsActivity extends Activity {
             // one given back is the site's own as soon as it plays; until then, as the current reel, it's started here
             + "if(c.__fmtvBack){if(!c.paused)c.__fmtvBack=0;else if(c!==window.__fmtvUserPaused)c.play();}},700);"
             // A reel that has come to the middle and sits there not loading for two seconds (not paused by you) is started.
-            + "setInterval(function(){var c=current()[1];if(!c)return;if(c!==window.__fmtvSeen){window.__fmtvSeen=c;window.__fmtvSince=Date.now();return;}"
+            + "fmtvEvery(function(){var c=current()[1];if(!c)return;if(c!==window.__fmtvSeen){window.__fmtvSeen=c;window.__fmtvSince=Date.now();return;}"
             + "if(c.paused&&c.readyState<2&&c!==window.__fmtvUserPaused&&Date.now()-window.__fmtvSince>2000){window.__fmtvSince=Date.now();c.play();}},500);"
             // Only what works from the sofa: the heart and its count (the other buttons and Follow hidden, so the heart sits
             // lower, where they were), and the caption as two lines, without "… more".
@@ -95,6 +100,7 @@ public class ReelsActivity extends Activity {
             + "el.__fmtvTidy=1;el.__fmtvHeart=item;}"
             // the heart level with the author's name, a little lower (its row moves with the caption's length: measured each time;
             // the profile link may end in "?hl=en", the page's language)
+            + "if((el.__fmtvAlign=(el.__fmtvAlign||0)+1)>8)return;"   // its layout settles in its first seconds: measured then only
             + "var h=el.__fmtvHeart,au=[].find.call(el.querySelectorAll('a[href]'),function(a){return /^\\/[^\\/?]+\\/reels\\/(\\?.*)?$/.test(a.getAttribute('href'));});"
             + "if(h&&au){var hr=h.getBoundingClientRect(),ar=au.getBoundingClientRect(),now=h.__fmtvShift||0;"
             + "var dy=Math.round(ar.top+ar.height/2-(hr.top-now+hr.height/2))+10;if(dy!==now){h.__fmtvShift=dy;h.style.transform='translateY('+dy+'px)';}}"
@@ -116,19 +122,25 @@ public class ReelsActivity extends Activity {
             + "if(p.__fmtvGrown||p.getBoundingClientRect().height<40){p.__fmtvGrown=1;set(p,'height','auto');}}}"   // the line-high boxes only
             // The site makes each reel the window's height less its tab bar's: how much that is, so the page can be that much
             // taller than the screen and a reel fill it all.
-            + "setInterval(function(){var vs=[].slice.call(document.querySelectorAll('video')).filter(function(v){return v.getBoundingClientRect().height>50;})"
+            + "fmtvEvery(function(){if(window.__fmtvGapCss>0)return;var vs=[].slice.call(document.querySelectorAll('video')).filter(function(v){return v.getBoundingClientRect().height>50;})"
             + ".map(function(v){return v.getBoundingClientRect().top;}).sort(function(a,b){return a-b;});for(var i=0;i+1<vs.length;i++){var g=innerHeight-(vs[i+1]-vs[i]);"
             + "if(vs[i+1]-vs[i]>innerHeight*0.5){if(g>=0&&g<innerHeight*0.3){window.__fmtvGapCss=g;FMTV.gap(Math.round(g*devicePixelRatio));}return;}}},1000);"
             // The tab bar (home, search, reels, messages, profile) hidden too: this screen is the reels and nothing else.
             // (only a low strip along the bottom: a Home icon elsewhere must not take the whole page with it)
-            + "function fmtvNoTabs(){[].forEach.call(document.querySelectorAll('svg[aria-label=\\\"Home\\\"]'),function(n){"
+            + "function fmtvNoTabs(){if(window.__fmtvNoTabs&&window.__fmtvNoTabs.isConnected)return;[].forEach.call(document.querySelectorAll('svg[aria-label=\\\"Home\\\"]'),function(n){"
             + "while(n&&n.getBoundingClientRect().width<innerWidth*0.9)n=n.parentElement;if(!n||n===document.body)return;var r=n.getBoundingClientRect();"
-            + "if(r.height>0&&r.height<120&&r.top>innerHeight*0.6)n.style.setProperty('display','none','important');});}"
-            + "setInterval(function(){fmtvNoTabs();var c=current()[1];if(!c)return;var vs=[].slice.call(document.querySelectorAll('video'))"
-            + ".sort(function(a,b){return a.getBoundingClientRect().top-b.getBoundingClientRect().top;}),i=vs.indexOf(c);"
+            + "if(r.height>0&&r.height<120&&r.top>innerHeight*0.6){n.style.setProperty('display','none','important');window.__fmtvNoTabs=n;}});}"
+            + "fmtvEvery(function(){fmtvNoTabs();var c=current()[1];if(!c)return;var vs=fmtvVideos(),i=vs.indexOf(c);"
             + "fmtvTidy(c.parentElement);if(vs[i+1])fmtvTidy(vs[i+1].parentElement);},300);"
+            // Reels off screen aren't laid out or painted (content-visibility, sized as they are, so the list and its stops
+            // don't move): the page keeps 10 to 15 of them, and each swipe made the TV work through them all.
+            + "fmtvEvery(function(){var v=document.querySelector('video');var sc=window.__fmtvList;"
+            + "if(!sc||!sc.isConnected){sc=v;while(sc&&!(sc.scrollHeight>sc.clientHeight+10&&/(auto|scroll)/.test(getComputedStyle(sc).overflowY)))sc=sc.parentElement;"
+            + "window.__fmtvList=sc;}if(!sc)return;[].forEach.call(sc.children,function(ch){if(ch.__fmtvLazy)return;var r=ch.getBoundingClientRect();"
+            + "if(r.height>300){ch.__fmtvLazy=1;ch.style.contentVisibility='auto';"
+            + "ch.style.containIntrinsicSize='auto '+Math.round(r.width)+'px auto '+Math.round(r.height)+'px';}});},1000);"
             // What's on screen, for the assistant: author, music, caption.
-            + "setInterval(function(){var v=current()[1];if(!v)return;var el=v.parentElement;FMTV.reel(location.href,(el.innerText||'').slice(0,600));},2000);"
+            + "fmtvEvery(function(){var v=current()[1];if(!v)return;var el=v.parentElement;FMTV.reel(location.href,(el.innerText||'').slice(0,600));},2000);"
             // Held Right: playbackRate 2 (the site sets it back by itself, so again every 0.1 s). Held Left: video plays no
             // way backwards, so it steps back 0.2 s every 0.1 s. 0: as before, playing unless you had paused it.
             + "window.fmtvSeek=function(r){var v=current()[1];if(!v)return;clearInterval(window.__fmtvBack);v.playbackRate=1;"
@@ -442,10 +454,39 @@ public class ReelsActivity extends Activity {
      */
     private void go(int dir) {
         android.util.DisplayMetrics m = getResources().getDisplayMetrics();
-        drag(m.widthPixels / 2f, dir * m.heightPixels * 0.5f);
+        swipe(m.widthPixels / 2f, dir * m.heightPixels * 0.97f);
     }
 
-    /** A finger dragging the page up by dy (down for a negative one), in real time, a step a frame, as a finger would. */
+    /**
+     * A finger that carries the list a whole reel along, easing to a stop, before it lets go. The site's touch-end
+     * handler waits for its busy main thread (a third of a second and more mid-swipe): a short flick waited for it before
+     * the list moved on, a jerk. Moved all the way while the finger is down, the list slides with the compositor and only
+     * settles the last few points after. Starts above the caption (a touch there goes to it, not to the list) and may end
+     * above the screen, as a finger leaving it would.
+     */
+    private void swipe(float x, float dy) {
+        long now = android.os.SystemClock.uptimeMillis();
+        if (now < dragUntil) return;
+        android.util.DisplayMetrics m = getResources().getDisplayMetrics();
+        float y0 = dy > 0 ? m.heightPixels * 0.72f : m.heightPixels * 0.25f, y1 = y0 - dy, wx = x - web.getLeft();
+        int steps = 15;   // 15 frames, a quarter of a second
+        dragUntil = now + (steps + 3) * 16L;
+        for (int i = 0; i <= steps + 1; i++) {
+            final int n = i;
+            ui.postAtTime(() -> {
+                int action = n == 0 ? android.view.MotionEvent.ACTION_DOWN : n > steps ? android.view.MotionEvent.ACTION_UP
+                        : android.view.MotionEvent.ACTION_MOVE;
+                float t = Math.min(n, steps) / (float) steps, eased = 1 - (1 - t) * (1 - t) * (1 - t);   // ease-out: slow at the end, no fling
+                android.view.MotionEvent ev = android.view.MotionEvent.obtain(now, android.os.SystemClock.uptimeMillis(), action, wx,
+                        y0 + (y1 - y0) * eased, 0);
+                ev.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);
+                web.dispatchTouchEvent(ev);
+                ev.recycle();
+            }, now + i * 16L);
+        }
+    }
+
+    /** A finger dragging the page up by dy (down for a negative one), in real time, a step a frame (the pointer's edge scrolling). */
     private void drag(float x, float dy) {
         long now = android.os.SystemClock.uptimeMillis();
         if (now < dragUntil) return;   // two at once would tangle into one lost swipe
