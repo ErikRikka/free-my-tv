@@ -26,7 +26,6 @@ public class ReelsActivity extends Activity {
     static final String SHELF_ID = "io.freemytv.reels";
     private static final String START = "https://www.instagram.com/reels/",
             LOGIN = "https://www.instagram.com/accounts/login/?next=%2Freels%2F";
-    private static final String UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36";
 
     /** Runs in every page: hides the codecs the TV plays badly, turns the sound on, and moves between reels. */
     private static final String SCRIPT = "(function(){if(window.__fmtv)return;window.__fmtv=1;"
@@ -70,7 +69,7 @@ public class ReelsActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(UA);
+        // The WebView's own name, as it is: a borrowed desktop one made the sign-in's robot check endless.
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
         web.addJavascriptInterface(new Object() {
