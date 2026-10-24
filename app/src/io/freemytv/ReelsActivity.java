@@ -17,8 +17,9 @@ import android.webkit.WebViewClient;
 /**
  * Instagram's Reels on the TV, through its website. The phone apps play reels with the TV's VP9 decoder, which turns many
  * of them into smears; here the page is told the TV can't play VP9, AV1 or HEVC, so Instagram sends H.264, which it plays
- * well. The remote works as on any TV app: Up and Down go through the reels, Right likes (held: saves), OK pauses (twice:
- * the reels go on by themselves), Back leaves; the assistant (the mic button) knows which reel is on screen. Not signed in, it
+ * well. The remote works as on any TV app: Up and Down go through the reels, Right likes (or unlikes), Right and Left held play twice
+ * as fast forward or back, OK pauses (twice: the reels go on by themselves; held: saves the reel), Back leaves; the
+ * assistant (the mic button) knows which reel is on screen. Not signed in, it
  * opens on the sign-in page; off the reels the arrows move a pointer and OK taps under it (fields, buttons, the
  * "I'm not a robot" box).
  */
@@ -45,9 +46,9 @@ public class ReelsActivity extends Activity {
             + "document.addEventListener('focusout',function(){setTimeout(function(){FMTV.typing(typing());},0);},true);"
             + "function current(){var vs=[].slice.call(document.querySelectorAll('video')),mid=innerHeight/2,best=null,bd=1e9;"
             + "vs.forEach(function(v){var r=v.getBoundingClientRect();if(r.height<50)return;var dd=Math.abs(r.top+r.height/2-mid);if(dd<bd){bd=dd;best=v;}});return [vs,best];}"
-            // Right: the current reel's heart, only if it isn't liked yet (pressing again doesn't take the like back).
+            // Right: the current reel's heart, a like, or the like taken back if it's there.
             + "window.fmtvLike=function(){var v=current()[1];if(!v)return 'none';for(var el=v;el;el=el.parentElement){"
-            + "if(el.querySelector('svg[aria-label=\\\"Unlike\\\"]'))return 'already';"
+            + "var u=el.querySelector('svg[aria-label=\\\"Unlike\\\"]');if(u){(u.closest('[role=button],button')||u).click();return 'unliked';}"
             + "var h=el.querySelector('svg[aria-label=\\\"Like\\\"]');if(h){(h.closest('[role=button],button')||h).click();return 'liked';}}return 'none';};"
             // Long Right: into Saved, the way the site's own bookmark does it (its media id from the reel's code in the address).
             + "window.fmtvSave=function(){var m=location.pathname.match(/\\/reels?\\/([\\w-]+)/);if(!m)return Promise.resolve('none');"
@@ -71,6 +72,15 @@ public class ReelsActivity extends Activity {
             // the page is opened again on that same reel, which lets them all go.
             + "setInterval(function(){var v=current()[1];"
             + "if((v&&v.error)||/trouble playing this video/i.test(document.body.innerText||''))FMTV.reload(location.href);},1000);"
+            // The site keeps every reel it has played loaded, each holding one of the TV's five video decoders: a loaded one
+            // more than one away lets go of its file (kept, and given back when you come next to it again).
+            + "setInterval(function(){var c=current()[1];if(!c)return;var vs=[].slice.call(document.querySelectorAll('video'))"
+            + ".sort(function(a,b){return a.getBoundingClientRect().top-b.getBoundingClientRect().top;}),i=vs.indexOf(c);"
+            + "vs.forEach(function(v,j){var src=v.getAttribute('src');"
+            + "if(Math.abs(j-i)>1&&src&&v.readyState>0){v.__fmtvSrc=src;v.pause();v.removeAttribute('src');v.load();}"
+            + "else if(Math.abs(j-i)<=1&&!src&&v.__fmtvSrc){v.setAttribute('src',v.__fmtvSrc);v.__fmtvSrc=null;v.__fmtvBack=1;}});"
+            // one given back is the site's own as soon as it plays; until then, as the current reel, it's started here
+            + "if(c.__fmtvBack){if(!c.paused)c.__fmtvBack=0;else if(c!==window.__fmtvUserPaused)c.play();}},700);"
             // What's on screen, for the assistant: author, music, caption.
             + "setInterval(function(){var v=current()[1];if(!v)return;var el=v.parentElement;FMTV.reel(location.href,(el.innerText||'').slice(0,600));},2000);"
             // The next (or previous) reel put in place at once: the site starts loading it straight away, about a second
@@ -79,7 +89,15 @@ public class ReelsActivity extends Activity {
             + ".sort(function(a,b){return a.getBoundingClientRect().top-b.getBoundingClientRect().top;}),c=current()[1],n=vs[vs.indexOf(c)+dir];"
             + "if(!c||!n)return 'drag';var sc=c;while(sc&&!(sc.scrollHeight>sc.clientHeight+10&&/(auto|scroll)/.test(getComputedStyle(sc).overflowY)))sc=sc.parentElement;"
             + "(sc||document.scrollingElement).scrollBy({top:n.getBoundingClientRect().top-c.getBoundingClientRect().top,behavior:'instant'});return 'ok';};"
-            + "window.fmtvToggle=function(){var v=current()[1];if(!v)return;v.muted=false;if(v.paused)v.play();else v.pause();};"
+            // Held Right: playbackRate 2. Held Left: video plays no way backwards, so it steps back 0.2 s every 0.1 s.
+            // The site sets the speed back by itself, so it's set again every 0.1 s while held.
+            + "window.fmtvSeek=function(r){var v=current()[1];if(!v)return;clearInterval(window.__fmtvBack);v.playbackRate=1;"
+            + "if(r>0){if(v.paused)v.play();window.__fmtvBack=setInterval(function(){if(v.playbackRate!==r)v.playbackRate=r;},100);v.playbackRate=r;}"
+            + "else if(r<0){v.pause();window.__fmtvBack=setInterval(function(){v.currentTime=Math.max(0,v.currentTime-0.2);},100);}"
+            + "else{if(v!==window.__fmtvUserPaused)v.play();var n=0;window.__fmtvBack=setInterval(function(){if(v.playbackRate!==1)v.playbackRate=1;"
+            + "if(++n>15)clearInterval(window.__fmtvBack);},100);}};"
+            + "window.fmtvToggle=function(){var v=current()[1];if(!v)return;v.muted=false;if(v.paused){window.__fmtvUserPaused=null;v.play();}"
+            + "else{window.__fmtvUserPaused=v;v.pause();}};"
             + "})();";
 
     private WebView web;
@@ -236,7 +254,17 @@ public class ReelsActivity extends Activity {
 
     private final android.os.Handler ui = new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable pause = () -> web.evaluateJavascript("fmtvToggle()", null);
-    private boolean auto;
+    private boolean auto, seeking;
+    private final Runnable fastOn = () -> seek(2, "▶▶  ×2"), backOn = () -> seek(-2, "◀◀  ×2");
+
+    /** Twice as fast forward (2) or back (-2) until the key is let go; the line stays on screen meanwhile. */
+    private void seek(int rate, String label) {
+        seeking = true;
+        web.evaluateJavascript("fmtvSeek(" + rate + ")", null);
+        note.setText(label);
+        note.animate().cancel();
+        note.setAlpha(1f);
+    }
     private long okAt;
     private int retries;
     private volatile long reloadedAt;
@@ -299,7 +327,8 @@ public class ReelsActivity extends Activity {
     }
 
     /** A big heart over the reel for a moment: the like went through. */
-    private void showHeart() {
+    private void showHeart(String sign) {
+        heart.setText(sign);
         heart.setScaleX(0.6f);
         heart.setScaleY(0.6f);
         heart.setAlpha(1f);
@@ -377,23 +406,34 @@ public class ReelsActivity extends Activity {
         int k = e.getKeyCode();
         if (onReels()) pointer.setVisibility(View.GONE);
         boolean ok = k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER;
-        if (onReels() && (k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_RIGHT || ok)) {
+        if (onReels() && (k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_RIGHT
+                || k == KeyEvent.KEYCODE_DPAD_LEFT || ok)) {
             boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
             if (down && e.getRepeatCount() == 0) web.evaluateJavascript(SCRIPT, null);
             if (k == KeyEvent.KEYCODE_DPAD_DOWN && down && e.getRepeatCount() == 0) go(1);
             else if (k == KeyEvent.KEYCODE_DPAD_UP && down && e.getRepeatCount() == 0) go(-1);
-            else if (k == KeyEvent.KEYCODE_DPAD_RIGHT && !down) {
-                // Held (TCL's remote sends no repeats, so by how long): into Saved; a press: a like.
-                if (e.getEventTime() - e.getDownTime() > 600) {
-                    web.evaluateJavascript("fmtvSave()", r -> say(r.contains("saved") ? "Сохранено" : "Не получилось сохранить"));
-                } else {
+            // Right and Left held: twice as fast, forward or back, for as long as they're held (TCL's remote sends no
+            // repeats, so it's whether the key is still down a moment later). Right pressed: a like.
+            else if ((k == KeyEvent.KEYCODE_DPAD_RIGHT || k == KeyEvent.KEYCODE_DPAD_LEFT) && down && e.getRepeatCount() == 0) {
+                ui.postDelayed(k == KeyEvent.KEYCODE_DPAD_RIGHT ? fastOn : backOn, 350);
+            } else if ((k == KeyEvent.KEYCODE_DPAD_RIGHT || k == KeyEvent.KEYCODE_DPAD_LEFT) && !down) {
+                ui.removeCallbacks(fastOn);
+                ui.removeCallbacks(backOn);
+                if (seeking) {
+                    seeking = false;
+                    web.evaluateJavascript("fmtvSeek(0)", null);
+                    note.animate().alpha(0f).setDuration(200).start();
+                } else if (k == KeyEvent.KEYCODE_DPAD_RIGHT) {
                     web.evaluateJavascript("fmtvLike()", r -> {
-                        if (!r.contains("none")) showHeart();
+                        if (r.contains("unliked")) showHeart("💔");
+                        else if (r.contains("liked")) showHeart("♥");
                     });
                 }
-            } else if (ok && down && e.getRepeatCount() == 0) {
+            } else if (ok && !down && e.getEventTime() - e.getDownTime() > 600) {   // OK held: into Saved
+                web.evaluateJavascript("fmtvSave()", r -> say(r.contains("saved") ? "Сохранено" : "Не получилось сохранить"));
+            } else if (ok && !down) {
                 long now = android.os.SystemClock.uptimeMillis();
-                if (now - okAt < 350) {   // a second OK soon after the first: reels go on by themselves, or stop
+                if (now - okAt < 400) {   // a second OK soon after the first: reels go on by themselves, or stop
                     okAt = 0;
                     ui.removeCallbacks(pause);
                     auto = !auto;
@@ -401,7 +441,7 @@ public class ReelsActivity extends Activity {
                     say(auto ? "Автолистание включено" : "Автолистание выключено");
                 } else {
                     okAt = now;
-                    ui.postDelayed(pause, 350);
+                    ui.postDelayed(pause, 400);
                 }
             }
             return true;
