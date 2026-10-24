@@ -17,13 +17,14 @@ import android.webkit.WebViewClient;
 /**
  * Instagram's Reels on the TV, through its website. The phone apps play reels with the TV's VP9 decoder, which turns many
  * of them into smears; here the page is told the TV can't play VP9, AV1 or HEVC, so Instagram sends H.264, which it plays
- * well. The remote works as on any TV app: Up and Down go through the reels, OK pauses, Back leaves. On the sign-in page
- * (or any text field) the keys are the page's own.
+ * well. The remote works as on any TV app: Up and Down go through the reels, OK pauses, Back leaves. Not signed in, it
+ * opens on the sign-in page, where Up and Down go from field to button and OK presses (or, on a field, opens the keyboard).
  */
 public class ReelsActivity extends Activity {
     /** Its place on the shelf, which holds packages: a name no app has (HomeApps.launchIntent knows it). */
     static final String SHELF_ID = "io.freemytv.reels";
-    private static final String START = "https://www.instagram.com/reels/";
+    private static final String START = "https://www.instagram.com/reels/",
+            LOGIN = "https://www.instagram.com/accounts/login/?next=%2Freels%2F";
     private static final String UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36";
 
     /** Runs in every page: hides the codecs the TV plays badly, turns the sound on, and moves between reels. */
@@ -46,6 +47,13 @@ public class ReelsActivity extends Activity {
             + "var n=vs[i+dir];if(n){n.scrollIntoView({block:'center',behavior:'smooth'});return;}"
             + "var s=document.scrollingElement;(c[1]?c[1].closest('main')||s:s);window.scrollBy({top:dir*innerHeight,behavior:'smooth'});"
             + "var e=document.querySelectorAll('[style*=\"scroll-snap\"],main div');for(var k=0;k<e.length;k++){var el=e[k];if(el.scrollHeight>el.clientHeight+50&&getComputedStyle(el).overflowY!=='visible'){el.scrollBy({top:dir*el.clientHeight,behavior:'smooth'});break;}}};"
+            // Off the reels (signing in): Up and Down walk the fields and buttons, with a ring that shows where you are.
+            + "var st=document.createElement('style');st.textContent=':focus{outline:3px solid #4f8cff!important;outline-offset:3px!important}';"
+            + "(document.head||document.documentElement).appendChild(st);"
+            + "window.fmtvFocus=function(dir){var l=[].filter.call(document.querySelectorAll('input:not([type=hidden]),button,[role=button],a[href]'),"
+            + "function(e){var r=e.getBoundingClientRect();return r.width>0&&r.height>0&&!e.disabled;});if(!l.length)return;"
+            + "var i=l.indexOf(document.activeElement),n=l[i<0?0:Math.max(0,Math.min(l.length-1,i+dir))];n.focus();n.scrollIntoView({block:'center'});};"
+            + "window.fmtvClick=function(){var a=document.activeElement;if(a&&a!==document.body)a.click();else fmtvFocus(1);};"
             + "window.fmtvToggle=function(){var v=current()[1];if(!v)return;v.muted=false;if(v.paused)v.play();else v.pause();};"
             + "})();";
 
@@ -92,7 +100,8 @@ public class ReelsActivity extends Activity {
         });
         web.setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
         setContentView(web);
-        web.loadUrl(START);
+        String cookies = CookieManager.getInstance().getCookie("https://www.instagram.com");
+        web.loadUrl(cookies != null && cookies.contains("sessionid=") ? START : LOGIN);   // signed in, or the sign-in page first
     }
 
     /** On the reels (not typing, not signing in), the remote goes through them. */
@@ -110,6 +119,16 @@ public class ReelsActivity extends Activity {
                 if (k == KeyEvent.KEYCODE_DPAD_DOWN) web.evaluateJavascript("fmtvMove(1)", null);
                 else if (k == KeyEvent.KEYCODE_DPAD_UP) web.evaluateJavascript("fmtvMove(-1)", null);
                 else web.evaluateJavascript("fmtvToggle()", null);
+            }
+            return true;
+        }
+        if (!onReels() && (k == KeyEvent.KEYCODE_DPAD_DOWN || k == KeyEvent.KEYCODE_DPAD_UP
+                || (!typing && (k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER)))) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {   // a text field's own OK opens the keyboard
+                web.evaluateJavascript(SCRIPT, null);
+                if (k == KeyEvent.KEYCODE_DPAD_DOWN) web.evaluateJavascript("fmtvFocus(1)", null);
+                else if (k == KeyEvent.KEYCODE_DPAD_UP) web.evaluateJavascript("fmtvFocus(-1)", null);
+                else web.evaluateJavascript("fmtvClick()", null);
             }
             return true;
         }
