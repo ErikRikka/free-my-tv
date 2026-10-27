@@ -75,6 +75,41 @@ final class NewsOrderTests {
             check(!NewsOrder.validateStory(Arrays.asList(1), 5, "t", " "), "no summary");
             check(NewsOrder.validateStory(Arrays.asList(1, 9), 5, "t", "s"), "one good index is enough");
         });
+        run("runFailsWhenModelNeverAnswered", () -> {
+            check(!NewsOrder.runSucceeded(25, 0, 500, 2, 0), "every model call failed: a failure, retried in 10 min");
+            check(!NewsOrder.runSucceeded(25, 25, 0, 0, 0), "every source failed");
+            check(!NewsOrder.runSucceeded(25, 0, 0, 0, 0), "sources answered but nothing readable (a block page)");
+            check(NewsOrder.runSucceeded(25, 3, 400, 2, 1), "one batch went through");
+            check(NewsOrder.runSucceeded(25, 0, 400, 0, 0), "nothing new to send is fine");
+        });
+        run("staleStoriesDropped", () -> {
+            NewsOrder.Story old = story("old", "AI", 99), fresh = story("fresh", "AI", 10), oldRead = story("oldRead", "AI", 50);
+            old.at = NOW - 3 * DAY;
+            oldRead.at = NOW - 3 * DAY;
+            oldRead.read = true;
+            fresh.at = NOW - 3600_000L;
+            List<NewsOrder.Story> kept = NewsOrder.dropStale(Arrays.asList(old, fresh, oldRead), NOW);
+            check(kept.size() == 1 && kept.get(0).id.equals("fresh"), "only stories under 48 h stay, got " + kept.size());
+        });
+        run("telegramBodyReachesModel", () -> {
+            NewsFeeds.Item tg = item("t", NOW);
+            tg.source = "Chan";
+            StringBuilder body = new StringBuilder();
+            for (int i = 0; i < 40; i++) body.append("word").append(i).append(' ');
+            tg.text = body.toString().trim();
+            tg.title = tg.text.substring(0, 140);
+            String line = NewsOrder.promptLine(tg, 3, NOW);
+            check(line.startsWith("[3] Chan, "), "head " + line);
+            check(line.contains("word30"), "text past 140 characters is sent: " + line);
+            check(!line.contains(" — "), "the title isn't repeated");
+            NewsFeeds.Item rss = item("r", NOW);
+            rss.source = "Feed";
+            rss.title = "Headline";
+            rss.text = "Body <<<sneaky>>> text";
+            rss.image = "x";
+            String l2 = NewsOrder.promptLine(rss, 0, NOW);
+            check(l2.contains("photo") && l2.contains("Headline — Body sneaky text"), "rss line " + l2);
+        });
         run("decay", () -> {
             double d = NewsOrder.decayed(1.0, NOW - 10 * DAY, NOW);
             check(Math.abs(d - Math.pow(0.97, 10)) < 1e-6, "decayed " + d);

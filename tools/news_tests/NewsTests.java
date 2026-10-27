@@ -118,6 +118,33 @@ public final class NewsTests {
             check(NewsFeeds.parseRss("<rss><item><title>x", "s").isEmpty(), "broken gives empty");
             check(NewsFeeds.parseRss("", "s").isEmpty(), "empty gives empty");
         }));
+        run("readCappedDeadline", t(() -> {
+            java.io.InputStream slow = new java.io.InputStream() {   // a byte every 30 ms: never times out a single read
+                @Override public int read() throws java.io.IOException {
+                    try {
+                        Thread.sleep(30);
+                    } catch (InterruptedException e) {
+                        throw new java.io.IOException(e);
+                    }
+                    return 'a';
+                }
+
+                @Override public int read(byte[] b, int off, int len) throws java.io.IOException {   // as a socket: what has come
+                    int c = read();
+                    b[off] = (byte) c;
+                    return 1;
+                }
+            };
+            long t0 = System.currentTimeMillis();
+            boolean threw = false;
+            try {
+                NewsFeeds.readCapped(slow, 2 * 1024 * 1024, t0 + 300);
+            } catch (java.io.IOException e) {
+                threw = true;
+            }
+            check(threw, "past the deadline it gives up");
+            check(System.currentTimeMillis() - t0 < 1500, "and soon after it");
+        }));
         run("readCappedStops", t(() -> {
             byte[] big = new byte[3 * 1024 * 1024];
             java.util.Arrays.fill(big, (byte) 'a');

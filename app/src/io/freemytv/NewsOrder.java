@@ -72,6 +72,41 @@ final class NewsOrder {
         return false;
     }
 
+    /**
+     * Whether a collection run worked, so the next one waits 2 h (else 10 min): some source answered with something
+     * readable, and if there was anything to send, the model took at least one batch.
+     */
+    static boolean runSucceeded(int sources, int failedSources, int items, int batches, int okBatches) {
+        if (sources == 0 || failedSources >= sources || items == 0) return false;
+        return batches == 0 || okBatches > 0;
+    }
+
+    static final long KEEP = 48 * 3600_000L;
+
+    /** Stories more than two days old go (after a week with the TV off, last week's news isn't new). */
+    static List<Story> dropStale(List<Story> stories, long now) {
+        List<Story> out = new ArrayList<>();
+        for (Story s : stories) if (now - s.at <= KEEP) out.add(s);
+        return out;
+    }
+
+    /** One record as the model reads it: "[i] Source, 27 Oct 14:00, photo: title — text", the strangers' fences taken out. */
+    static String promptLine(NewsFeeds.Item it, int i, long now) {
+        String title = clean(it.title), text = clean(it.text);
+        if (text.length() > 300) text = text.substring(0, 300) + "…";
+        StringBuilder b = new StringBuilder();
+        b.append('[').append(i).append("] ").append(it.source).append(", ")
+                .append(new java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale.US).format(new java.util.Date(it.at)))
+                .append(it.image != null ? ", photo" : "").append(": ");
+        if (!text.isEmpty() && text.startsWith(title.replace("…", ""))) b.append(text);   // a Telegram post: its title is its first words
+        else b.append(title).append(text.isEmpty() ? "" : " — " + text);
+        return b.toString();
+    }
+
+    private static String clean(String s) {
+        return s == null ? "" : s.replace("<<<", "").replace(">>>", "").replaceAll("\\s+", " ").trim();
+    }
+
     static double decayed(double weight, long likedAt, long now) {
         return weight * Math.pow(0.97, Math.max(0, now - likedAt) / (double) DAY);
     }

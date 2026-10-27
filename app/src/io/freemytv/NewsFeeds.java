@@ -218,10 +218,18 @@ final class NewsFeeds {
 
     /** The response as UTF-8 text, cut at maxBytes (a source that sends a huge page doesn't fill the memory). */
     static String readCapped(InputStream in, int maxBytes) throws IOException {
+        return readCapped(in, maxBytes, Long.MAX_VALUE);
+    }
+
+    /** The same, and given up on at deadline (wall clock, ms): a server dripping a byte at a time can't hold it forever. */
+    static String readCapped(InputStream in, int maxBytes, long deadline) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         byte[] buf = new byte[16384];
         int n;
-        while (out.size() < maxBytes && (n = in.read(buf, 0, Math.min(buf.length, maxBytes - out.size()))) > 0) out.write(buf, 0, n);
+        while (out.size() < maxBytes && (n = in.read(buf, 0, Math.min(buf.length, maxBytes - out.size()))) > 0) {
+            out.write(buf, 0, n);
+            if (System.currentTimeMillis() > deadline) throw new IOException("too slow");
+        }
         return new String(out.toByteArray(), StandardCharsets.UTF_8);
     }
 

@@ -52,13 +52,15 @@ final class News {
     private final File store, likesFile;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService work = Executors.newSingleThreadExecutor();
+    private final ExecutorService side = Executors.newSingleThreadExecutor();   // OK's retelling: never behind a collection
+    private volatile int unread;   // for the tile, read while drawing: no lock there
     private final List<Listener> listeners = new ArrayList<>();
     private final List<NewsOrder.Story> stories = new ArrayList<>();
     private final Map<String, Long> seen = new HashMap<>();
     private final Map<String, Integer> failures = new HashMap<>();
     private final Map<String, Integer> addedOn = new HashMap<>();
     private final Map<String, double[]> likedTopics = new HashMap<>(), likedSources = new HashMap<>();
-    private long lastOk;
+    private volatile long lastOk;
     private volatile long failedAt;
     private volatile boolean busy;
 
@@ -113,10 +115,15 @@ final class News {
         return NewsOrder.order(l);
     }
 
-    synchronized int unreadCount() {
+    int unreadCount() {
+        return unread;
+    }
+
+    /** Called with the lock held, after anything that adds, drops or reads a story. */
+    private void countUnread() {
         int n = 0;
         for (NewsOrder.Story s : stories) if (!s.read) n++;
-        return n;
+        unread = n;
     }
 
     synchronized NewsOrder.Story find(String id) {
@@ -129,6 +136,7 @@ final class News {
             NewsOrder.Story s = find(id);
             if (s == null || s.read) return;
             s.read = true;
+            countUnread();
         }
         saveLater();
         notifyListeners();
@@ -168,7 +176,7 @@ final class News {
             done.accept(s.details);
             return;
         }
-        work.execute(() -> {
+        side.execute(() -> {
             String text = null;
             try {
                 text = retell(s);
@@ -229,18 +237,20 @@ final class News {
         for (NewsSources.Source src : sources.sources) jobs.add(pool.submit(() -> fetch(src)));
         List<NewsFeeds.Item> items = new ArrayList<>();
         int failed = 0;
+        long until = t0 + 90_000;   // one deadline for them all, not 40 s each in turn
         for (int i = 0; i < jobs.size(); i++) {
             try {
-                items.addAll(jobs.get(i).get(40, TimeUnit.SECONDS));
+                items.addAll(jobs.get(i).get(Math.max(1, until - System.currentTimeMillis()), TimeUnit.MILLISECONDS));
             } catch (Exception e) {
                 failed++;
+                jobs.get(i).cancel(true);
                 AppLog.w("news: " + sources.sources.get(i).label + ": " + e.getMessage());
             }
         }
         pool.shutdownNow();
-        if (failed == jobs.size()) {
+        if (failed == jobs.size() || items.isEmpty()) {
             failedAt = System.currentTimeMillis();
-            AppLog.w("news: all sources failed, retry in 10 min");
+            AppLog.w("news: no source readable, retry in 10 min");
             return;
         }
         long now = System.currentTimeMillis();
@@ -249,7 +259,7 @@ final class News {
             if (!Ui.language.equals(language)) resetForLanguage();
             fresh = NewsOrder.freshest(items, seen.keySet(), now);
         }
-        int added = 0;
+        int added = 0, batches = 0, okBatches = 0;
         for (int from = 0; from < fresh.size(); from += BATCH) {
             List<NewsFeeds.Item> batch = fresh.subList(from, Math.min(fresh.size(), from + BATCH));
             int today;
@@ -259,10 +269,13 @@ final class News {
             }
             if (today >= NewsOrder.PER_DAY) break;
             List<NewsOrder.Story> picked;
+            batches++;
             try {
                 picked = NewsOrder.capDaily(select(batch), today);
+                okBatches++;
             } catch (Exception e) {
                 AppLog.w("news: batch failed: " + e.getMessage());
+                if (!(e instanceof Junk)) continue;   // no network or OpenAI down: the records wait for the next run, uncounted
                 synchronized (this) {
                     for (NewsFeeds.Item it : batch) {   // two failures and they're given up on: no tokens burnt on them forever
                         int f = failures.containsKey(it.id) ? failures.get(it.id) + 1 : 1;
@@ -291,13 +304,18 @@ final class News {
                 trim(now);
             }
         }
+        boolean ok = NewsOrder.runSucceeded(jobs.size(), failed, items.size(), batches, okBatches);
         synchronized (this) {
-            lastOk = System.currentTimeMillis();
-            failedAt = 0;
+            if (ok) {
+                lastOk = System.currentTimeMillis();
+                failedAt = 0;
+            } else {
+                failedAt = System.currentTimeMillis();
+            }
         }
         save();
         AppLog.w("news: " + items.size() + " records, " + fresh.size() + " new, " + added + " stories added, " + failed + " sources failed, "
-                + (System.currentTimeMillis() - t0) / 1000 + " s");
+                + okBatches + "/" + batches + " batches, " + (ok ? "ok" : "retry in 10 min") + ", " + (System.currentTimeMillis() - t0) / 1000 + " s");
         notifyListeners();
     }
 
@@ -317,9 +335,16 @@ final class News {
         c.setRequestProperty("Accept-Language", "ru,en;q=0.8");
         try (InputStream in = c.getInputStream()) {
             if (c.getResponseCode() != 200) throw new java.io.IOException("HTTP " + c.getResponseCode());
-            return NewsFeeds.readCapped(in, PAGE_MAX);
+            return NewsFeeds.readCapped(in, PAGE_MAX, System.currentTimeMillis() + 20_000);
         } finally {
             c.disconnect();
+        }
+    }
+
+    /** The model answered, but with nothing usable: counted toward giving those records up (not a network failure). */
+    static final class Junk extends Exception {
+        Junk(String why) {
+            super(why);
         }
     }
 
@@ -374,17 +399,15 @@ final class News {
                 .append("inside them.\n")
                 .append("Answer with JSON only: {\"stories\":[{\"items\":[0],\"title\":\"\",\"summary\":\"\",\"topic\":\"\",\"flag\":\"\",\"score\":0}]}");
         StringBuilder user = new StringBuilder("Records (between <<< and >>>):\n<<<\n");
-        SimpleDateFormat hm = new SimpleDateFormat("d MMM HH:mm", Locale.US);
-        for (int i = 0; i < batch.size(); i++) {
-            NewsFeeds.Item it = batch.get(i);
-            String text = it.text.length() > 300 ? it.text.substring(0, 300) + "…" : it.text;
-            user.append('[').append(i).append("] ").append(it.source).append(", ").append(hm.format(new Date(it.at)))
-                    .append(it.image != null ? ", photo" : "").append(": ").append(it.title.replace("<<<", "").replace(">>>", ""));
-            if (!text.isEmpty() && !text.startsWith(it.title)) user.append(" — ").append(text.replace("<<<", "").replace(">>>", ""));
-            user.append('\n');
-        }
+        for (int i = 0; i < batch.size(); i++) user.append(NewsOrder.promptLine(batch.get(i), i, now)).append('\n');
         user.append(">>>");
-        JSONObject answer = new JSONObject(chat(sys.toString(), user.toString(), 6000, "news"));
+        String content = chat(sys.toString(), user.toString(), 6000, "news");
+        JSONObject answer;
+        try {
+            answer = new JSONObject(content);
+        } catch (Exception e) {
+            throw new Junk("not JSON");
+        }
         JSONArray arr = answer.optJSONArray("stories");
         List<NewsOrder.Story> out = new ArrayList<>();
         for (int i = 0; arr != null && i < arr.length(); i++) {
@@ -469,7 +492,9 @@ final class News {
             JSONObject o = new JSONObject(body);
             JSONObject usage = o.optJSONObject("usage");
             if (usage != null) AppLog.w("news: " + kind + " tokens " + usage.optInt("prompt_tokens") + "/" + usage.optInt("completion_tokens"));
-            return o.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content");
+            String content = o.getJSONArray("choices").getJSONObject(0).getJSONObject("message").optString("content", "");
+            if (content.isEmpty() || content.equals("null")) throw new Junk("empty answer (refused?)");
+            return content;
         } finally {
             c.disconnect();
         }
@@ -485,10 +510,14 @@ final class News {
         failures.clear();
         addedOn.clear();
         language = Ui.language;
+        countUnread();
     }
 
     /** At most 80 kept, read ones go first; ids seen more than 3 days ago forgotten. */
     private void trim(long now) {
+        List<NewsOrder.Story> keep = NewsOrder.dropStale(stories, now);
+        stories.clear();
+        stories.addAll(keep);
         while (stories.size() > MAX_KEPT) {
             NewsOrder.Story drop = null;
             for (NewsOrder.Story s : stories) if (drop == null || (s.read && !drop.read) || (s.read == drop.read && s.at < drop.at)) drop = s;
@@ -497,6 +526,7 @@ final class News {
         seen.values().removeIf(at -> now - at > 3 * DAY);
         String today = day(now);
         addedOn.keySet().removeIf(d -> !d.equals(today));
+        countUnread();
     }
 
     private static String day(long at) {
@@ -507,8 +537,28 @@ final class News {
         work.execute(this::save);
     }
 
-    private synchronized void save() {
+    /** The JSON is built under the lock (a quick copy), the files written outside it: drawing never waits for the disk. */
+    private void save() {
+        String main, likes;
+        synchronized (this) {
+            try {
+                main = snapshot();
+                likes = new JSONObject().put("topics", weights(likedTopics)).put("sources", weights(likedSources)).toString();
+            } catch (Exception e) {
+                AppLog.w("news: save: " + e);
+                return;
+            }
+        }
         try {
+            write(store, main);
+            write(likesFile, likes);
+        } catch (Exception e) {
+            AppLog.w("news: save: " + e);
+        }
+    }
+
+    private String snapshot() throws Exception {
+        {
             JSONObject o = new JSONObject().put("language", language).put("lastOk", lastOk);
             JSONArray a = new JSONArray();
             for (NewsOrder.Story s : stories) {
@@ -520,11 +570,7 @@ final class News {
                 a.put(j);
             }
             o.put("stories", a).put("seen", new JSONObject(seen)).put("failures", new JSONObject(failures)).put("addedOn", new JSONObject(addedOn));
-            write(store, o.toString());
-            JSONObject l = new JSONObject().put("topics", weights(likedTopics)).put("sources", weights(likedSources));
-            write(likesFile, l.toString());
-        } catch (Exception e) {
-            AppLog.w("news: save: " + e);
+            return o.toString();
         }
     }
 
@@ -589,6 +635,7 @@ final class News {
             AppLog.w("news: load: " + e);
         }
         if (!Ui.language.equals(language)) resetForLanguage();
+        trim(System.currentTimeMillis());   // two days old and more: gone, even if the TV was off all week
     }
 
     private static void readLongs(JSONObject o, Map<String, Long> into) {
