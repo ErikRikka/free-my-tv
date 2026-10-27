@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+<channel><title>Test feed</title>
+<item>
+  <title>New camera &amp; lens announced</title>
+  <link>https://example.com/news/camera</link>
+  <pubDate>Tue, 27 Oct 2026 14:00:00 +0000</pubDate>
+  <description>A small &lt;b&gt;camera&lt;/b&gt; with a big sensor.</description>
+  <media:content url="https://example.com/img/camera.jpg" medium="image"/>
+</item>
+</channel></rss>
