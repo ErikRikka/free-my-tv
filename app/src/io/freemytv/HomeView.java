@@ -62,7 +62,7 @@ import java.util.function.Consumer;
  * Measurements are in a 1920×1080 space (k = width / 1920). The screen is split into layers so the TV's weak GPU only
  * redraws what changed.
  */
-final class HomeView extends ViewGroup implements Choreographer.FrameCallback, HomeData.Listener, Recs.Listener, Spotify.Listener {
+final class HomeView extends ViewGroup implements Choreographer.FrameCallback, HomeData.Listener, Recs.Listener, News.Listener, Spotify.Listener {
     // tvOS grid (Human Interface Guidelines): content inside the safe area, 80 px from the sides and 60 from top and
     // bottom; 40 px between items; 7 columns of 217 px (the apps). The shelf glass extends 36 px past the tiles (the
     // same padding on all four sides) and the tile corners are concentric with it (glass radius = radius + padding).
@@ -314,6 +314,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final Paint border = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint rim = new Paint(Paint.ANTI_ALIAS_FLAG);
     private float shelfFocus;   // how much the shelf row has focus (0 to 1): unfocused tiles dim with it
+    private final Paint unreadPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private String unreadText = "";
+    private int unreadShown = -1;
     private Paint pagerCount;
     private String pagerText = "";
     private int pagerAt = -1, pagerOf = -1;
@@ -477,6 +480,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         lastStep = 0;
         data.addListener(this);
         recs.addListener(this);
+        News.get(getContext()).addListener(this);
         data.refreshIfStale();
         recs.refreshIfStale();
         News.get(getContext()).refreshIfStale();
@@ -514,6 +518,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         handler.removeCallbacks(reloadSoon);
         data.removeListener(this);
         recs.removeListener(this);
+        News.get(getContext()).removeListener(this);
         if (tvInputs != null) tvInputs.unregisterCallback(inputCallback);
         if (spotify != null) spotify.stop();
         watchVpn(false);
@@ -622,6 +627,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     @Override public void onRecs() {
         wake();
         updatePicks();
+    }
+
+    /** New stories, or one read: the count on the tile and, with the tile focused, the stories on top. */
+    @Override public void onNews() {
+        syncFeed();
+        if (News.SHELF_ID.equals(feedKey)) updateCards();
+        tiles.invalidate();
     }
 
     private void invalidateAll() {
@@ -1488,6 +1500,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             c.drawRoundRect(tmp, r + gap + w / 2, r + gap + w / 2, rim);
             rim.setStrokeWidth(2.5f * k);
         }
+        if (News.SHELF_ID.equals(it.pkg)) drawUnread(c, cell, s);
         if (it.pkg != null && it.pkg.contains("vpn")) {
             float dot = 9 * k * s, dx = cell.right - 22 * k * s, dy = cell.top + 22 * k * s;
             tileFill.setShader(null);
@@ -1496,6 +1509,27 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             tileFill.setColor(vpnOn ? 0xFF34C759 : 0xFF8E8E93);
             c.drawCircle(dx, dy, dot, tileFill);
         }
+    }
+
+    /** The News tile's unread count: a white capsule at its top right (nothing when all is read). */
+    private void drawUnread(Canvas c, RectF cell, float s) {
+        int n = News.get(getContext()).unreadCount();
+        if (n <= 0) return;
+        if (n != unreadShown) {   // the text is built only when the count changes, never per frame
+            unreadShown = n;
+            unreadText = n > 99 ? "99+" : String.valueOf(n);
+            unreadPaint.setTypeface(Ui.semibold);
+            unreadPaint.setTextAlign(Paint.Align.CENTER);
+        }
+        float h = 30 * k * s, pad = 11 * k * s;
+        unreadPaint.setTextSize(19 * k * s);
+        float w = Math.max(h, unreadPaint.measureText(unreadText) + pad * 2);
+        float right = cell.right - 10 * k * s, top = cell.top + 10 * k * s;
+        tmp.set(right - w, top, right, top + h);
+        unreadPaint.setColor(0xF2FFFFFF);
+        c.drawRoundRect(tmp, h / 2, h / 2, unreadPaint);
+        unreadPaint.setColor(0xFF111114);
+        c.drawText(unreadText, tmp.centerX(), tmp.centerY() + 7 * k * s, unreadPaint);
     }
 
     /**
@@ -2353,6 +2387,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         } else if (zone == Z_CARDS) {
             Recs.Pick p = cardIndex < cards.size() ? cards.get(cardIndex) : null;
             if (p == null || p.pkg == null) return;
+            if ("news".equals(p.source)) {   // the story itself, in the news feed
+                click.open();
+                activity.startActivity(new android.content.Intent().setClassName("io.freemytv", NewsActivity.class.getName())
+                        .putExtra("story", p.link));
+                return;
+            }
             if (p.link != null) {   // straight to the title in its app
                 click.open();
                 try {
@@ -2814,7 +2854,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** The three cards of the current tab (Explore, Movies, Shows) and the background taken from the first one. */
     private void updateCards() {
-        List<Recs.Pick> list = feedKey != null ? recs.feed(feedKey) : recs.main();
+        List<Recs.Pick> list = News.SHELF_ID.equals(feedKey) ? News.get(getContext()).picks() : feedKey != null ? recs.feed(feedKey) : recs.main();
         if (!samePicks(list, cards)) {
             Recs.Pick shown = cards.isEmpty() ? null : cards.get(Math.min(cardIndex, cards.size() - 1));
             cards = list;
@@ -2861,6 +2901,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (sheetOpen || zone != Z_SHELF || shelf.isEmpty()) return;
         HomeApps.Item it = shelf.get(Math.min(shelfIndex, shelf.size() - 1));
         String want = it.pkg != null && it.pkg.contains("vpn") && recs.hasFeed(Recs.NATURE) ? Recs.NATURE
+                : News.SHELF_ID.equals(it.pkg) && News.get(getContext()).unreadCount() > 0 ? News.SHELF_ID
                 : it.pkg != null && recs.hasFeed(it.pkg) ? it.pkg : null;
         if (want == null ? feedKey == null : want.equals(feedKey)) return;
         if (!cards.isEmpty()) feedShown.put(String.valueOf(feedKey), Recs.key(cards.get(Math.min(cardIndex, cards.size() - 1))));
@@ -2985,7 +3026,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             fitPaint.set(hMeta);
             heroMetaText = TextUtils.ellipsize(p.meta == null ? "" : p.meta, fitPaint, 1100 * k, TextUtils.TruncateAt.END).toString();
             heroPlot = plotLayout(p.plot, heroShift);
-            heroPillText = Ui.tr("Assistir", "Watch");
+            heroPillText = "news".equals(p.source) ? Ui.tr("Ler", "Read") : Ui.tr("Assistir", "Watch");
         }
         float x = MARGIN * k;
         if (Recs.NATURE.equals(p.source)) {   // the VPN's tile: only the photo

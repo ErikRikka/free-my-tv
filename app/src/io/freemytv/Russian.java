@@ -19,6 +19,7 @@ final class Russian {
             case "Couldn't save": return "Не получилось сохранить";
             case "Auto-scroll on": return "Автолистание включено";
             case "Auto-scroll off": return "Автолистание выключено";
+            case "Read": return "Читать";
             case "Connecting to Instagram…": return "Подключаюсь к Instagram…";
             case "No connection to Instagram": return "Нет связи с Instagram";
             case "Trying again…": return "Пробую ещё раз…";

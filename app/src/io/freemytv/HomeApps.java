@@ -96,6 +96,7 @@ final class HomeApps {
         {"kinowatch", "KINO.WATCH", "watch.kino", "15B9E9", "", "1"},
         {"kinopoisk", "Кинопоиск", "ru.kinopoisk.tv", "FF5500", "", "1"},
         {"redshield", "Red Shield VPN", "com.redshieldvpn.app", "FF4A2A", "", "1"},
+        {"news", "News", News.SHELF_ID, "2E7CF6", "", "1"},
     };
     static final int MAX_SHELF = 8;
     /** Live TV apps of some brands (the antenna's channels open through the standard Android request first). */
@@ -131,6 +132,7 @@ final class HomeApps {
             if (items.size() >= MAX_SHELF) break;
             Intent launch = launchIntent(pm, pkg);
             if (launch == null) continue;
+            if (News.SHELF_ID.equals(pkg) && !News.get(c).enabled()) continue;   // no news.txt or no OpenAI key: no tile
             ResolveInfo ri = pm.resolveActivity(launch, 0);
             String[] d = known(pkg);
             Item it = new Item();
@@ -164,6 +166,9 @@ final class HomeApps {
     static List<String> shelfPackages(Context c) {
         List<String> custom = Prefs.shelf();
         if (custom != null && Prefs.addOnce("reels", custom, ReelsActivity.SHELF_ID, "com.google.android.youtube.tv", true)) {
+            custom = Prefs.shelf();
+        }
+        if (custom != null && Prefs.addOnce("news", custom, News.SHELF_ID, "com.redshieldvpn.app", News.get(c).enabled())) {
             custom = Prefs.shelf();
         }
         if (custom != null) return custom;
@@ -453,6 +458,7 @@ final class HomeApps {
 
     static Intent launchIntent(PackageManager pm, String pkg) {
         if (ReelsActivity.SHELF_ID.equals(pkg)) return new Intent().setClassName("io.freemytv", ReelsActivity.class.getName());   // ours, not an app
+        if (News.SHELF_ID.equals(pkg)) return new Intent().setClassName("io.freemytv", NewsActivity.class.getName());
         Intent intent = pm.getLeanbackLaunchIntentForPackage(pkg);
         return intent != null ? intent : pm.getLaunchIntentForPackage(pkg);
     }

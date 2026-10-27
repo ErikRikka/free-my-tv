@@ -12,6 +12,8 @@ final class German {
             case "Couldn't save": return "Speichern fehlgeschlagen";
             case "Auto-scroll on": return "Automatisches Weiterblättern an";
             case "Auto-scroll off": return "Automatisches Weiterblättern aus";
+            case "News": return "Nachrichten";
+            case "Read": return "Lesen";
             case "Connecting to Instagram…": return "Verbinde mit Instagram…";
             case "No connection to Instagram": return "Keine Verbindung zu Instagram";
             case "Trying again…": return "Neuer Versuch…";

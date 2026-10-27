@@ -202,7 +202,12 @@ final class News {
     static String meta(NewsOrder.Story s) {
         long now = System.currentTimeMillis();
         String when = new SimpleDateFormat(now - s.at < DAY && day(now).equals(day(s.at)) ? "HH:mm" : "d MMM, HH:mm", locale()).format(new Date(s.at));
-        return (s.topic == null ? "" : s.topic + " · ") + s.source + " · " + when;
+        return (s.topic == null || s.topic.isEmpty() ? "" : topic(s.topic) + " · ") + s.source + " · " + when;
+    }
+
+    /** "гаджеты" → "Гаджеты": the model writes topics in lower case now and then. */
+    static String topic(String t) {
+        return t == null || t.isEmpty() ? "" : t.substring(0, 1).toUpperCase(locale()) + t.substring(1);
     }
 
     private static Locale locale() {

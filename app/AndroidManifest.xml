@@ -92,6 +92,15 @@
             android:screenOrientation="landscape"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|uiMode"
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
+        <!-- The News tile's feed: in :home with the home screen, which keeps the stories (News). -->
+        <activity
+            android:name=".NewsActivity"
+            android:process=":home"
+            android:exported="false"
+            android:label="News"
+            android:screenOrientation="landscape"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|uiMode"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
         <!-- The app's icon opens the settings (switch between Free My TV and the original home screen). -->
         <activity
             android:name=".SettingsActivity"
