@@ -339,14 +339,10 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   -webkit-transition: opacity 0.25s;
   transition: opacity 0.25s;
 }
-/* Focus wins over any brand's color from the sofa: a white ring, and the other tiles step back. */
-.tile.focus { -webkit-transform: scale(1.2); transform: scale(1.2); box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.92), 0 18px 40px rgba(0, 0, 0, 0.34); z-index: 2; }
-#tiles .tile { -webkit-transition: -webkit-transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.3s, opacity 0.25s; transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.3s, opacity 0.25s; }
-#tiles.active .tile { opacity: 0.7; }
-#tiles.active .tile.focus { opacity: 1; }
+.tile.focus { -webkit-transform: scale(1.14); transform: scale(1.14); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.34); z-index: 2; }
 .tile.focus::after { opacity: 1; }
 .night .tile { box-shadow: 0 4px 22px rgba(0, 0, 0, 0.3); }
-.night .tile.focus { box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.92), 0 18px 40px rgba(0, 0, 0, 0.6); }
+.night .tile.focus { box-shadow: 0 18px 40px rgba(0, 0, 0, 0.6); }
 
 /* MARK: - Drawer: inputs and shortcuts, weather, prices */
 

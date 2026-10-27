@@ -75,7 +75,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private static final float SHELF_PAD = 40, TILE_GAP = 48;
     private static final float TILE_RADIUS = 22, TILE_MAX_W = 270;
     // Tile focus (Apple TV style): it grows from the center and its shadow drops (it "rises" toward the viewer).
-    private static final float FOCUS_GROW = 0.2f;
+    private static final float FOCUS_GROW = 0.14f;   // 30% less than tvOS's own: calmer on a 65-inch screen
     // Corner capsule.
     // Corner capsule: the height and top offset of the tvOS tab bar (68 and 46).
     private static final float CAPSULE_TOP = 46, CAPSULE_H = 68, BUTTON = 56;
@@ -215,9 +215,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         TILE_STYLE.put("disney", new int[] {0xFF173584, 0xFF08143F, 0});
         TILE_STYLE.put("max", new int[] {0xFF5C30E8, 0xFF221684, 0});
         TILE_STYLE.put("appletv", new int[] {0xFF1C1C1E, 0xFF000000, 0});
-        TILE_STYLE.put("kinowatch", new int[] {0xFF2C2C2E, 0xFF1A1A1C, 0});
-        TILE_STYLE.put("kinopoisk", new int[] {0xFF141416, 0xFF000000, 0});
-        TILE_STYLE.put("redshield", new int[] {0xFF4B4088, 0xFF2F275C, 0});
+        TILE_STYLE.put("kinowatch", new int[] {0xFF27C1F1, 0xFF0B87C9, 1});
+        TILE_STYLE.put("kinopoisk", new int[] {0xFFFF7A1F, 0xFFEE4D00, 1});
+        TILE_STYLE.put("redshield", new int[] {0xFF5B4FA6, 0xFF372D74, 1});
+        TILE_STYLE.put("reels", new int[] {0xFFC1358F, 0xFFF5683D, 2});   // the white glyph on Instagram's colors (logos/reels-dark.png)
+        TILE_STYLE.put("news", new int[] {0xFF3B8BFF, 0xFF1D5BE0, 2});
     }
     private final android.graphics.PorterDuffColorFilter whiteLogo =
             new android.graphics.PorterDuffColorFilter(0xFFFFFFFF, android.graphics.PorterDuff.Mode.SRC_IN);
@@ -313,7 +315,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final Paint imageFill = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final Paint border = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint rim = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private float shelfFocus;   // how much the shelf row has focus (0 to 1): unfocused tiles dim with it
     private final Paint unreadPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private String unreadText = "";
     private int unreadShown = -1;
@@ -1404,7 +1405,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             }
         }
         if (liftIndex >= 0 && liftIndex < shelf.size() && moveLift.value > 0.02f) top = liftIndex;
-        shelfFocus = Ui.clamp(most > 0.02f ? most : 0);
         for (int pass = 0; pass < 2; pass++) {
             for (int i = 0; i < shelf.size(); i++) {
                 if ((pass == 0) == (i == top)) continue;
@@ -1455,7 +1455,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             if (tileShaders.length != shelf.size() || tileShaderH != bh) {
                 tileShaders = new LinearGradient[shelf.size()];
                 tileShaderH = bh;
-                tileGlow = new LinearGradient(0, -bh / 2, 0, 0, 0x14FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP);
+                // tvOS's lit edge: the focused icon catches the light along its top
+                tileGlow = new LinearGradient(0, -bh / 2, 0, bh * 0.1f, 0x3DFFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP);
             }
             if (tileShaders[i] == null) {
                 tileShaders[i] = new LinearGradient(0, -bh / 2, 0, bh / 2, style[0], style[1], Shader.TileMode.CLAMP);
@@ -1483,22 +1484,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             drawLogo(c, it, cell, s, 0);
         } else {
             if (it.tile != null) roundImage(c, it.tile, cell, r);
-        }
-        // Focus has to win over any brand's color from the sofa: the others step back, the focused one gets a white ring.
-        float dim = 0.34f * shelfFocus * (1 - fc);
-        if (dim > 0.005f) {
-            tileFill.setShader(null);
-            tileFill.setColor(Ui.alpha(0xFF000000, dim));
-            c.drawRoundRect(cell, r, r, tileFill);
-        }
-        if (fc > 0.01f && l < 0.02f) {
-            float gap = 5 * k * s, w = 3.5f * k * s;
-            tmp.set(cell.left - gap - w / 2, cell.top - gap - w / 2, cell.right + gap + w / 2, cell.bottom + gap + w / 2);
-            rim.setShader(null);
-            rim.setStrokeWidth(w);
-            rim.setColor(Ui.alpha(0xFFFFFFFF, 0.92f * fc));
-            c.drawRoundRect(tmp, r + gap + w / 2, r + gap + w / 2, rim);
-            rim.setStrokeWidth(2.5f * k);
         }
         if (News.SHELF_ID.equals(it.pkg)) drawUnread(c, cell, s);
         if (it.pkg != null && it.pkg.contains("vpn")) {
