@@ -227,6 +227,7 @@ Built on [simbasjungles/free-my-tv](https://github.com/simbasjungles/free-my-tv)
 - **VPN dot** on the VPN tile, **sleep timer** button, vector line icons (Lucide, ISC), crisp logos on the dock.
 - **After 20 min idle:** a quiet fireplace loop (`fireplace.wav` by martats, Freesound, CC0), 3% of the TV's maximum volume ÷ 6, fades in over 10 s, any key fades it out.
 - **Spotify "now playing"** (optional).
+- **News tile** (optional): a feed of the day's stories, one to a screen, picked and retold in the TV's language by OpenAI (`news_model`, cents a day) from RSS feeds and public Telegram channels. Your sources and topics go in `local-assets/news.txt` (never committed; copy `news.example.txt`). Without that file there is no tile. Up and Down go through the stories, Right asks for more like this, OK tells the story in detail.
 
 Extra settings in `config.properties` (all optional, see `config.example.properties`): `kinopoisk_key`, `favorites`, `kinopub_refresh_token`, `youtube_*`, `spotify_*`. Get the tokens with `tools/kinopub_token.py`, `tools/youtube_token.py`, `tools/spotify_token.py` (each signs in with a device code and writes the token into `config.properties`, which is never committed).
 

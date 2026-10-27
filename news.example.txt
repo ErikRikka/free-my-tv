@@ -1,0 +1,24 @@
+# The News tile's sources and topics. Copy to local-assets/news.txt (not committed) and make it yours.
+# [sources]: "rss <feed url> <name>" or "tg <public Telegram channel> <name>" (read from t.me/s/<channel>).
+# [topics]: what you care about, in your own words; the model picks and retells stories about these.
+# [practical]: rules and practical news that matter even when nobody talks about them (visas, borders, travel).
+# [boring]: what to leave out.
+
+[sources]
+rss https://www.theverge.com/rss/index.xml The Verge
+rss https://petapixel.com/feed/ PetaPixel
+rss https://pitchfork.com/feed/feed-news/rss Pitchfork
+tg rozetked Rozetked
+tg meduzalive Meduza
+
+[topics]
+Phones, laptops and software updates
+New games and the game industry
+New music and big tours
+Films and series: premieres and trailers
+
+[practical]
+Travel rules and visas for the countries I visit
+
+[boring]
+Company earnings, stock deals and routine court cases
