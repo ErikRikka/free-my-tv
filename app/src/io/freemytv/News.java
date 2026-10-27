@@ -101,6 +101,12 @@ final class News {
         });
     }
 
+    /** When new stories may come next (for the feed's last screen). */
+    synchronized long nextUpdateAt() {
+        long now = System.currentTimeMillis();
+        return lastOk == 0 || lastOk + EVERY < now ? now + RETRY : lastOk + EVERY;
+    }
+
     synchronized List<NewsOrder.Story> unreadOrdered() {
         List<NewsOrder.Story> l = new ArrayList<>();
         for (NewsOrder.Story s : stories) if (!s.read) l.add(s);
@@ -343,6 +349,16 @@ final class News {
         if (!sources.boring.isEmpty()) {
             sys.append("\nLeave out:\n");
             for (String t : sources.boring) sys.append("- ").append(t).append('\n');
+        }
+        List<String> already = new ArrayList<>();
+        synchronized (this) {
+            for (int i = stories.size() - 1; i >= 0 && already.size() < 60; i--) {
+                if (now - stories.get(i).at < NewsOrder.FRESH) already.add(stories.get(i).title);
+            }
+        }
+        if (!already.isEmpty()) {   // the batches are picked one by one: the same event mustn't come back from another one
+            sys.append("\nAlready in the feed (do not return these events again, even from other records):\n");
+            for (String a : already) sys.append("- ").append(a).append('\n');
         }
         if (!topLikedTopics.isEmpty()) sys.append("\nThe reader asked for more of these topics: ").append(String.join(", ", topLikedTopics)).append('\n');
         if (!topLikedSources.isEmpty()) sys.append("and these sources: ").append(String.join(", ", topLikedSources)).append('\n');

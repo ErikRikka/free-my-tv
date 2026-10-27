@@ -12,6 +12,17 @@ final class German {
             case "Couldn't save": return "Speichern fehlgeschlagen";
             case "Auto-scroll on": return "Automatisches Weiterblättern an";
             case "Auto-scroll off": return "Automatisches Weiterblättern aus";
+            case "▲▼ next stories": return "▲▼ weitere Meldungen";
+            case "OK — details": return "OK — Details";
+            case "▶ more like this": return "▶ mehr davon";
+            case "talked about": return "im Gespräch";
+            case "useful for the trip": return "wichtig für die Reise";
+            case "Nothing new yet": return "Noch nichts Neues";
+            case "You've read everything": return "Alles gelesen";
+            case "Next update around %s": return "Nächste Aktualisierung gegen %s";
+            case "More like this": return "Mehr davon";
+            case "Less of this": return "Weniger davon";
+            case "Couldn't load details": return "Details konnten nicht geladen werden";
             case "News": return "Nachrichten";
             case "Read": return "Lesen";
             case "Connecting to Instagram…": return "Verbinde mit Instagram…";

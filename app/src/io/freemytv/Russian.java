@@ -19,6 +19,17 @@ final class Russian {
             case "Couldn't save": return "Не получилось сохранить";
             case "Auto-scroll on": return "Автолистание включено";
             case "Auto-scroll off": return "Автолистание выключено";
+            case "▲▼ next stories": return "▲▼ другие новости";
+            case "OK — details": return "ОК — подробнее";
+            case "▶ more like this": return "▶ больше такого";
+            case "talked about": return "обсуждают";
+            case "useful for the trip": return "важно для поездки";
+            case "Nothing new yet": return "Пока ничего нового";
+            case "You've read everything": return "Вы всё прочитали";
+            case "Next update around %s": return "Следующее обновление около %s";
+            case "More like this": return "Больше такого";
+            case "Less of this": return "Меньше такого";
+            case "Couldn't load details": return "Не получилось загрузить подробности";
             case "Read": return "Читать";
             case "Connecting to Instagram…": return "Подключаюсь к Instagram…";
             case "No connection to Instagram": return "Нет связи с Instagram";

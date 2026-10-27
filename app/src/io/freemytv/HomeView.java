@@ -2893,6 +2893,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (cardIndex + 1 < cards.size()) recs.backdrop(cards.get(cardIndex + 1));
         if (cardIndex > 0) recs.backdrop(cards.get(cardIndex - 1));
         if (b != null) showBackdrop(b);
+        else if (cards.get(cardIndex).backdrop == null) showBackdrop(null);   // no picture (a news story): not the last one's
         heroDirty = true;
     }
 
