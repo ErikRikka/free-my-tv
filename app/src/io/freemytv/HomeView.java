@@ -402,6 +402,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             wake();
             data.refreshIfStale();
             recs.refreshIfStale();
+            News.get(getContext()).refreshIfStale();
             checkNotices();
             updatePalette();
             checkNight(true);
@@ -478,6 +479,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         recs.addListener(this);
         data.refreshIfStale();
         recs.refreshIfStale();
+        News.get(getContext()).refreshIfStale();
         if (tvInputs != null) tvInputs.registerCallback(inputCallback, handler);
         if (spotify == null) spotify = new Spotify(this);
         spotify.start();
