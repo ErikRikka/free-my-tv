@@ -19,6 +19,11 @@ final class Russian {
             case "Couldn't save": return "Не получилось сохранить";
             case "Auto-scroll on": return "Автолистание включено";
             case "Auto-scroll off": return "Автолистание выключено";
+            case "Here's what's new.": return "Вот что нового.";
+            case "And finally:": return "И напоследок.";
+            case "More on that:": return "И ещё по этой теме.";
+            case "Next:": return "Дальше.";
+            case "Now, %s.": return "Теперь — %s.";
             case "Photo: ": return "Фото: ";
             case "◀ stop": return "◀ стоп";
             case "◀ listen": return "◀ слушать";

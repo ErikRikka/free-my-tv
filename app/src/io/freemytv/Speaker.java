@@ -42,7 +42,15 @@ final class Speaker {
     private TextToSpeech tts;
     private boolean ttsReady;
 
+    private final String instructions;
+
     Speaker(Context c) {
+        this(c, "Говори по-русски, живо и тепло, как добрый знакомый в разговоре, бодрым темпом, без пафоса.");
+    }
+
+    /** With its own way of speaking (the news feed reads like a radio host, the assistant talks like a friend). */
+    Speaker(Context c, String instructions) {
+        this.instructions = instructions;
         context = c;
         if (cloud) {
             player = new Thread(this::play, "speaker");
@@ -130,7 +138,7 @@ final class Speaker {
         try {
             JSONObject req = new JSONObject().put("model", Config.OPENAI_TTS_MODEL).put("voice", Config.OPENAI_VOICE).put("input", text)
                     .put("response_format", "pcm").put("speed", Config.OPENAI_VOICE_SPEED)
-                    .put("instructions", "Говори по-русски, живо и тепло, как добрый знакомый в разговоре, бодрым темпом, без пафоса.");
+                    .put("instructions", instructions);
             HttpURLConnection c = (HttpURLConnection) new URL("https://api.openai.com/v1/audio/speech").openConnection();
             c.setConnectTimeout(8000);
             c.setReadTimeout(30000);

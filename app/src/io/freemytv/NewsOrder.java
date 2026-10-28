@@ -25,6 +25,7 @@ final class NewsOrder {
         boolean more = true;   // OK has more to tell than the screen (false: no "details" on this one)
         String bg, credit;     // a search for a fitting photo when the story has none; the photographer, when it's used
         boolean enriched;      // its article's picture and "more" already looked up
+        boolean triedPhoto;    // a stock photo already searched for (found or not): not asked again
     }
 
     /** Best first, but no topic more than twice in a row while another topic is still left. */

@@ -526,11 +526,27 @@ public class NewsActivity extends Activity {
     // MARK: - Read aloud: the assistant's voice reads the stories one after another, and the feed turns with it
 
     private static final int SPOKEN = 500;
+    /** How the news is read: a live radio host, not an announcer reading a list. */
+    private static final String HOST = "Ты ведущий живого радиовыпуска новостей и рассказываешь их другу, а не зачитываешь сводку. "
+            + "Говори естественно, с живой интонацией: меняй темп, делай короткие паузы между мыслями, выделяй голосом главное. "
+            + "Лёгкие и забавные новости — с улыбкой в голосе, тяжёлые — спокойнее и серьёзнее. Бодро, но без крика, пафоса и "
+            + "дикторской монотонности. Язык — как в тексте.";
+
+    /** The host's few words before a story: where the reading starts, a new topic, the same one again, the last. */
+    private String lead(int i) {
+        NewsOrder.Story s = stories.get(i);
+        String topic = News.topic(s.topic).toLowerCase(Ui.ru ? Ui.RU : Locale.getDefault());
+        if (i == readFrom) return Ui.tr("Vamos às notícias.", "Here's what's new.");
+        if (i == stories.size() - 1) return Ui.tr("E, para terminar:", "And finally:");
+        String before = stories.get(i - 1).topic;
+        if (before != null && before.equalsIgnoreCase(s.topic)) return Ui.tr("E mais sobre isso:", "More on that:");
+        return topic.isEmpty() ? Ui.tr("Agora:", "Next:") : String.format(Ui.tr("Agora — %s.", "Now, %s."), topic);
+    }
 
     private void startReading() {
         if (reading || index >= stories.size() || isFinishing()) return;
         reading = true;
-        voice = new Speaker(this);
+        voice = new Speaker(this, HOST);
         readFrom = index;
         queuedTo = index;
         heard = 0;
@@ -544,7 +560,10 @@ public class NewsActivity extends Activity {
 
     /** Two stories said ahead, never more: a story you stop before isn't paid for. */
     private void queueAhead() {
-        while (queuedTo < stories.size() && queuedTo <= readFrom + heard + 1) voice.say(NewsOrder.spoken(stories.get(queuedTo++), SPOKEN));
+        while (queuedTo < stories.size() && queuedTo <= readFrom + heard + 1) {
+            int i = queuedTo++;
+            voice.say(lead(i) + " " + NewsOrder.spoken(stories.get(i), SPOKEN));
+        }
     }
 
     private final Runnable follow = new Runnable() {

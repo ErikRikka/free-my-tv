@@ -12,6 +12,11 @@ final class German {
             case "Couldn't save": return "Speichern fehlgeschlagen";
             case "Auto-scroll on": return "Automatisches Weiterblättern an";
             case "Auto-scroll off": return "Automatisches Weiterblättern aus";
+            case "Here's what's new.": return "Das gibt es Neues.";
+            case "And finally:": return "Und zum Schluss:";
+            case "More on that:": return "Mehr dazu:";
+            case "Next:": return "Weiter:";
+            case "Now, %s.": return "Jetzt: %s.";
             case "Photo: ": return "Foto: ";
             case "◀ stop": return "◀ Stopp";
             case "◀ listen": return "◀ anhören";
