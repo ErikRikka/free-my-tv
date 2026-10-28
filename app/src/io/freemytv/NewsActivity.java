@@ -546,7 +546,7 @@ public class NewsActivity extends Activity {
     private void startReading() {
         if (reading || index >= stories.size() || isFinishing()) return;
         reading = true;
-        voice = new Speaker(this, HOST);
+        voice = new Speaker(this, HOST, Config.NEWS_VOICE);
         readFrom = index;
         queuedTo = index;
         heard = 0;

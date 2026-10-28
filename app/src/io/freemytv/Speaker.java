@@ -42,15 +42,16 @@ final class Speaker {
     private TextToSpeech tts;
     private boolean ttsReady;
 
-    private final String instructions;
+    private final String instructions, voiceName;
 
     Speaker(Context c) {
-        this(c, "Говори по-русски, живо и тепло, как добрый знакомый в разговоре, бодрым темпом, без пафоса.");
+        this(c, "Говори по-русски, живо и тепло, как добрый знакомый в разговоре, бодрым темпом, без пафоса.", Config.OPENAI_VOICE);
     }
 
-    /** With its own way of speaking (the news feed reads like a radio host, the assistant talks like a friend). */
-    Speaker(Context c, String instructions) {
+    /** With its own voice and way of speaking (the news feed reads like a radio host, the assistant talks like a friend). */
+    Speaker(Context c, String instructions, String voiceName) {
         this.instructions = instructions;
+        this.voiceName = voiceName;
         context = c;
         if (cloud) {
             player = new Thread(this::play, "speaker");
@@ -136,7 +137,7 @@ final class Speaker {
         boolean ok = false;
         long t0 = System.currentTimeMillis();
         try {
-            JSONObject req = new JSONObject().put("model", Config.OPENAI_TTS_MODEL).put("voice", Config.OPENAI_VOICE).put("input", text)
+            JSONObject req = new JSONObject().put("model", Config.OPENAI_TTS_MODEL).put("voice", voiceName).put("input", text)
                     .put("response_format", "pcm").put("speed", Config.OPENAI_VOICE_SPEED)
                     .put("instructions", instructions);
             HttpURLConnection c = (HttpURLConnection) new URL("https://api.openai.com/v1/audio/speech").openConnection();
@@ -155,7 +156,7 @@ final class Speaker {
                     byte[] buf = new byte[4800];   // 100 ms of audio
                     int n, have = 0;
                     while ((n = in.read(buf, have, buf.length - have)) > 0 && !stopped) {
-                        if (!ok) AppLog.w("voice: tts first audio after " + (System.currentTimeMillis() - t0) + " ms (" + Config.OPENAI_VOICE + ")");
+                        if (!ok) AppLog.w("voice: tts first audio after " + (System.currentTimeMillis() - t0) + " ms (" + voiceName + ")");
                         have += n;
                         int whole = have & ~1;   // a sample is two bytes: an odd one waits for its pair, or the sound crackles
                         if (whole == 0) continue;
