@@ -197,6 +197,26 @@ final class NewsFeeds {
         return out;
     }
 
+    private static final Pattern META = Pattern.compile("<meta\\s[^>]*>", Pattern.CASE_INSENSITIVE);
+    private static final Pattern META_KEY = Pattern.compile("(?:property|name)\\s*=\\s*[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
+    private static final Pattern META_VALUE = Pattern.compile("content\\s*=\\s*[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
+
+    /** An article page's big picture (og:image, else twitter:image); feeds usually carry only a small copy of it. */
+    static String ogImage(String html) {
+        if (html == null) return null;
+        String og = null, tw = null;
+        Matcher m = META.matcher(html.length() > 300_000 ? html.substring(0, 300_000) : html);
+        while (m.find()) {
+            Matcher k = META_KEY.matcher(m.group()), v = META_VALUE.matcher(m.group());
+            if (!k.find() || !v.find()) continue;
+            String key = k.group(1).toLowerCase(Locale.US), url = unescape(v.group(1)).trim();
+            if (!url.startsWith("http") || !imageAllowed(url)) continue;
+            if (og == null && (key.equals("og:image") || key.equals("og:image:url") || key.equals("og:image:secure_url"))) og = url;
+            if (tw == null && (key.equals("twitter:image") || key.equals("twitter:image:src"))) tw = url;
+        }
+        return og != null ? og : tw;
+    }
+
     /** A real photo: not an emoji, not a share card that is a picture of text, not blank. */
     static boolean imageAllowed(String url) {
         if (url == null || url.trim().isEmpty()) return false;

@@ -74,6 +74,7 @@ final class Config {
     static final String OPENAI_KEY = "$(prop openai_key '')";
     static final String OPENAI_MODEL = "$(prop openai_model 'gpt-4o')";
     static final String NEWS_MODEL = "$(prop news_model 'gpt-5.4-mini')";
+    static final String UNSPLASH_KEY = "$(prop unsplash_key '')";
     static final String OPENAI_VOICE = "$(prop openai_voice 'coral')";
     static final String OPENAI_TTS_MODEL = "$(prop openai_tts_model 'gpt-4o-mini-tts')";
     static final String VOICE_MODE = "$(prop voice_mode 'live')";

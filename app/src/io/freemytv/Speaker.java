@@ -87,7 +87,12 @@ final class Speaker {
         }
     }
 
-    void stop() {
+    /** How many of the lines said so far have been heard to the end (the news feed follows the voice with it). */
+    int played() {
+        return played;
+    }
+
+        void stop() {
         stopped = true;
         playlist.add(new LinkedBlockingQueue<byte[]>() {{ add(END); }});
         if (tts != null) tts.stop();

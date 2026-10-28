@@ -19,6 +19,11 @@ final class Russian {
             case "Couldn't save": return "Не получилось сохранить";
             case "Auto-scroll on": return "Автолистание включено";
             case "Auto-scroll off": return "Автолистание выключено";
+            case "Photo: ": return "Фото: ";
+            case "◀ stop": return "◀ стоп";
+            case "◀ listen": return "◀ слушать";
+            case "Nothing more to add": return "Больше подробностей нет";
+            case "Reading aloud · ◀ stop": return "Читаю вслух · ◀ стоп";
             case "▲▼ next stories": return "▲▼ другие новости";
             case "OK — details": return "ОК — подробнее";
             case "▶ more like this": return "▶ больше такого";

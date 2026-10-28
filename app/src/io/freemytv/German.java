@@ -12,6 +12,11 @@ final class German {
             case "Couldn't save": return "Speichern fehlgeschlagen";
             case "Auto-scroll on": return "Automatisches Weiterblättern an";
             case "Auto-scroll off": return "Automatisches Weiterblättern aus";
+            case "Photo: ": return "Foto: ";
+            case "◀ stop": return "◀ Stopp";
+            case "◀ listen": return "◀ anhören";
+            case "Nothing more to add": return "Mehr gibt es dazu nicht";
+            case "Reading aloud · ◀ stop": return "Wird vorgelesen · ◀ Stopp";
             case "▲▼ next stories": return "▲▼ weitere Meldungen";
             case "OK — details": return "OK — Details";
             case "▶ more like this": return "▶ mehr davon";

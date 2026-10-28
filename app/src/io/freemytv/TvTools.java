@@ -86,6 +86,10 @@ final class TvTools {
                         + "Возвращает короткую сводку найденного.",
                 new JSONObject().put("query", str("Что искать, полным вопросом по-русски")), "query"));
         t.put(fn("turn_off_tv", "Выключить телевизор (режим ожидания).", new JSONObject()));
+        if (News.get(c).enabled()) {
+            t.put(fn("read_news", "Зачитать вслух непрочитанные новости из ленты «Новости» на телевизоре: лента откроется и сама "
+                    + "прочитает их по очереди коротко, твоим голосом. Для просьб «прочитай новости», «что в новостях».", new JSONObject()));
+        }
         return t;
     }
 
@@ -114,6 +118,13 @@ final class TvTools {
                 return Memory.forget(c, a.optString("what"));
             case "web_search":
                 return search(a.optString("query"));
+            case "read_news": {
+                int n = News.get(c).unreadCount();
+                if (n == 0) return "Непрочитанных новостей нет.";
+                Intent i = new Intent().setClassName("io.freemytv", NewsActivity.class.getName()).putExtra("read", true);
+                return start(c, i) ? "Лента открыта, непрочитанных новостей: " + n + ". Скажи одной короткой фразой, что начинаешь, "
+                        + "и больше ничего: читать будет лента." : "Не получилось открыть новости.";
+            }
             case "turn_off_tv":
                 try (Adb adb = Adb.connect(c, 8_000, null)) {
                     adb.shell("input keyevent KEYCODE_SLEEP");

@@ -61,7 +61,9 @@ public class NewsActivity extends Activity {
     private ScrollView details;
     private ReelsActivity.Sign heart, loading;
     private ObjectAnimator spin;
-    private boolean waitingDetails;
+    private boolean waitingDetails, reading;
+    private Speaker voice;
+    private int readFrom, queuedTo, heard;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -88,8 +90,6 @@ public class NewsActivity extends Activity {
         cp.bottomMargin = Math.round(h * 0.1f);
         hints = text(Ui.medium, 0.02f, 0x80FFFFFF);
         hints.setGravity(Gravity.END);
-        hints.setText(Ui.tr("▲▼ próximas notícias", "▲▼ next stories") + "\n" + Ui.tr("OK — detalhes", "OK — details") + "\n"
-                + Ui.tr("▶ mais assim", "▶ more like this"));
         hints.setLineSpacing(0, 1.3f);
         FrameLayout.LayoutParams hp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM | Gravity.END);
@@ -148,6 +148,8 @@ public class NewsActivity extends Activity {
         root.addView(note, np);
         setContentView(root);
         show(0);
+        // Opened by the assistant to read the news: it says its few words and leaves first.
+        if (getIntent().getBooleanExtra("read", false)) ui.postDelayed(this::startReading, 3000);
     }
 
     private TextView text(android.graphics.Typeface face, float size, int color) {
@@ -176,6 +178,7 @@ public class NewsActivity extends Activity {
         bars.setVisibility(story ? View.VISIBLE : View.GONE);
         count.setVisibility(story ? View.VISIBLE : View.GONE);
         hints.setVisibility(story ? View.VISIBLE : View.GONE);
+        if (story) hints.setText(hintsFor(stories.get(index)));
         count.setText((index + 1) + " / " + stories.size());
         bars.invalidate();
         if (story) {
@@ -184,21 +187,40 @@ public class NewsActivity extends Activity {
         }
     }
 
+    /** The keys that do something on this story (no "details" where there's nothing more to tell). */
+    private String hintsFor(NewsOrder.Story s) {
+        return Ui.tr("▲▼ próximas notícias", "▲▼ next stories") + (s.more ? "\n" + Ui.tr("OK — detalhes", "OK — details") : "")
+                + "\n" + Ui.tr("▶ mais assim", "▶ more like this") + "\n" + (reading ? Ui.tr("◀ parar", "◀ stop") : Ui.tr("◀ ouvir", "◀ listen"));
+    }
+
     private final Runnable markRead = () -> {
         if (index < stories.size()) news.markRead(stories.get(index).id);
     };
 
     private View storyPage(NewsOrder.Story s) {
         FrameLayout f = new FrameLayout(this);
-        TextView tile = text(Ui.displaySemibold, 0.16f, 0x14FFFFFF);   // no picture: the topic, large and faint
-        tile.setText(News.topic(s.topic));
-        tile.setGravity(Gravity.CENTER);
-        tile.setBackgroundColor(0xFF1B1D24);
-        f.addView(tile, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        // Until (or without) a picture: the topic's own colour light. A sharp photo fills the screen; a small one is
+        // its own blurred self behind, and itself as a card on the right — never stretched into a smear.
+        f.addView(new Ambient(this, s.topic), new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         ImageView img = new ImageView(this);
         img.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        img.setVisibility(View.GONE);
         f.addView(img, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        load(s.image, img);
+        ImageView card = new ImageView(this);
+        card.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        card.setVisibility(View.GONE);
+        card.setClipToOutline(true);
+        card.setOutlineProvider(new android.view.ViewOutlineProvider() {
+            @Override public void getOutline(View v, android.graphics.Outline o) {
+                o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), h * 0.022f);
+            }
+        });
+        card.setElevation(h * 0.03f);
+        FrameLayout.LayoutParams cardLp = new FrameLayout.LayoutParams(1, 1, Gravity.END | Gravity.TOP);
+        cardLp.rightMargin = Math.round(h * 0.074f);
+        cardLp.topMargin = Math.round(h * 0.13f);
+        f.addView(card, cardLp);
+        load(s.image, img, card);
         View scrim = new View(this);
         scrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP,
                 new int[] {0xF5000000, 0xD9000000, 0x99000000, 0x33000000, 0x00000000}));   // dark enough under the text on a white photo
@@ -244,6 +266,11 @@ public class NewsActivity extends Activity {
         summary.setLineSpacing(0, 1.35f);
         summary.setEllipsize(android.text.TextUtils.TruncateAt.END);
         body.addView(summary, margins(0, Math.round(h * 0.022f)));
+        if (s.credit != null) {   // a stock photo, not the story's own: its photographer, as Unsplash asks
+            TextView credit = text(Ui.medium, 0.017f, 0x80FFFFFF);
+            credit.setText(Ui.tr("Foto: ", "Photo: ") + s.credit);
+            body.addView(credit, margins(0, Math.round(h * 0.016f)));
+        }
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Math.round(w * 0.6f), ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM | Gravity.START);
         lp.leftMargin = Math.round(h * 0.074f);
@@ -307,12 +334,14 @@ public class NewsActivity extends Activity {
         if (!down) return super.dispatchKeyEvent(e);
         switch (k) {
             case KeyEvent.KEYCODE_DPAD_DOWN:
+                stopReading();
                 if (index < stories.size()) {
                     index++;
                     show(1);
                 }
                 return true;
             case KeyEvent.KEYCODE_DPAD_UP:
+                stopReading();
                 if (index > 0) {
                     index--;
                     show(-1);
@@ -323,9 +352,16 @@ public class NewsActivity extends Activity {
                 return true;
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
-                if (index < stories.size() && e.getRepeatCount() == 0 && !waitingDetails) openDetails(stories.get(index));
+                if (index < stories.size() && e.getRepeatCount() == 0 && !waitingDetails && stories.get(index).more) {
+                    stopReading();
+                    openDetails(stories.get(index));
+                }
                 return true;
             case KeyEvent.KEYCODE_DPAD_LEFT:
+                if (e.getRepeatCount() == 0 && index < stories.size()) {
+                    if (reading) stopReading();
+                    else startReading();
+                }
                 return true;
             default:
                 return super.dispatchKeyEvent(e);
@@ -359,6 +395,11 @@ public class NewsActivity extends Activity {
                 say(Ui.tr("Não deu para carregar os detalhes", "Couldn't load details"));
                 return;
             }
+            if (text.isEmpty()) {   // the sources hold nothing more: said once, and OK goes quiet on this one
+                say(Ui.tr("Não há mais detalhes", "Nothing more to add"));
+                hints.setText(hintsFor(s));
+                return;
+            }
             detailsTitle.setText(s.title);
             detailsText.setText(text);
             details.scrollTo(0, 0);
@@ -382,16 +423,45 @@ public class NewsActivity extends Activity {
 
     // MARK: - Pictures: downloaded once into the cache, decoded at screen size, off the main thread
 
-    private void load(String url, ImageView into) {
+    private static final int SHARP = 1100;   // narrower than this, a picture would be a smear across a 4K screen
+
+    private void load(String url, ImageView full, ImageView card) {
         if (url == null) return;
         images.execute(() -> {
             Bitmap b = decode(file(url, true));
-            if (b != null) ui.post(() -> {
-                into.setImageBitmap(b);
-                into.setAlpha(0f);
-                into.animate().alpha(1f).setDuration(180).start();
+            if (b == null) return;
+            boolean sharp = b.getWidth() >= SHARP;
+            Bitmap blur = sharp ? null : blur(b);
+            ui.post(() -> {
+                if (isDestroyed()) return;
+                full.setImageBitmap(sharp ? b : blur);
+                fadeIn(full);
+                if (sharp) return;
+                full.setColorFilter(0x59000000, android.graphics.PorterDuff.Mode.SRC_ATOP);   // the blur stays in the back
+                float scale = Math.min(Math.min(h * 0.5f / b.getHeight(), w * 0.36f / b.getWidth()), 1.8f);
+                ViewGroup.LayoutParams lp = card.getLayoutParams();
+                lp.width = Math.round(b.getWidth() * scale);
+                lp.height = Math.round(b.getHeight() * scale);
+                card.setLayoutParams(lp);
+                card.setImageBitmap(b);
+                fadeIn(card);
             });
         });
+    }
+
+    private static void fadeIn(View v) {
+        v.setVisibility(View.VISIBLE);
+        v.setAlpha(0f);
+        v.animate().alpha(1f).setDuration(220).start();
+    }
+
+    /** A soft blur, cheaply: down to a few dozen pixels and back up, in two filtered steps. */
+    private static Bitmap blur(Bitmap b) {
+        int w1 = Math.max(8, b.getWidth() / 8), h1 = Math.max(8, b.getHeight() / 8);
+        Bitmap a = Bitmap.createScaledBitmap(b, w1, h1, true);
+        Bitmap c = Bitmap.createScaledBitmap(a, Math.max(4, w1 / 4), Math.max(4, h1 / 4), true);
+        a.recycle();
+        return Bitmap.createScaledBitmap(c, w1 * 2, h1 * 2, true);
     }
 
     private void prefetch(String url) {
@@ -453,10 +523,102 @@ public class NewsActivity extends Activity {
         }
     }
 
+    // MARK: - Read aloud: the assistant's voice reads the stories one after another, and the feed turns with it
+
+    private static final int SPOKEN = 500;
+
+    private void startReading() {
+        if (reading || index >= stories.size() || isFinishing()) return;
+        reading = true;
+        voice = new Speaker(this);
+        readFrom = index;
+        queuedTo = index;
+        heard = 0;
+        queueAhead();
+        note.animate().cancel();
+        note.setText(Ui.tr("Lendo em voz alta · ◀ parar", "Reading aloud · ◀ stop"));
+        note.setAlpha(1f);
+        hints.setText(hintsFor(stories.get(index)));
+        ui.postDelayed(follow, 250);
+    }
+
+    /** Two stories said ahead, never more: a story you stop before isn't paid for. */
+    private void queueAhead() {
+        while (queuedTo < stories.size() && queuedTo <= readFrom + heard + 1) voice.say(NewsOrder.spoken(stories.get(queuedTo++), SPOKEN));
+    }
+
+    private final Runnable follow = new Runnable() {
+        @Override public void run() {
+            if (!reading) return;
+            int p = voice.played();
+            if (p > heard) {
+                heard = p;
+                int next = readFrom + heard;
+                if (next >= stories.size()) {   // all read: the end screen, and quiet
+                    stopReading();
+                    index = stories.size();
+                    show(1);
+                    return;
+                }
+                index = next;
+                show(1);
+                queueAhead();
+            }
+            ui.postDelayed(this, 250);
+        }
+    };
+
+    private void stopReading() {
+        if (!reading) return;
+        reading = false;
+        ui.removeCallbacks(follow);
+        Speaker v = voice;
+        voice = null;
+        if (v != null) new Thread(v::release, "news-voice-stop").start();
+        note.animate().alpha(0f).setDuration(200).start();
+        if (index < stories.size()) hints.setText(hintsFor(stories.get(index)));
+    }
+
+    @Override protected void onPause() {
+        super.onPause();
+        stopReading();   // another app in front, or the TV asleep: the voice stops with the screen
+    }
+
     @Override protected void onDestroy() {
         ui.removeCallbacksAndMessages(null);
         images.shutdownNow();
         super.onDestroy();
+    }
+
+    /** A story with no picture: its topic's colour, lit softly from a corner (each topic its own hue). */
+    private static final class Ambient extends View {
+        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
+        private final float hue;
+        private android.graphics.Shader a, b;
+
+        Ambient(android.content.Context c, String topic) {
+            super(c);
+            hue = ((topic == null ? 0 : topic.toLowerCase(Locale.ROOT).hashCode()) & 0xFFFF) % 360;
+        }
+
+        private static int hsv(float hue, float s, float v, int alpha) {
+            return Color.HSVToColor(alpha, new float[] {(hue + 360) % 360, s, v});
+        }
+
+        @Override protected void onSizeChanged(int width, int height, int ow, int oh) {
+            a = new android.graphics.RadialGradient(width * 0.78f, height * 0.12f, width * 0.75f,
+                    hsv(hue, 0.75f, 0.62f, 0xD9), hsv(hue, 0.75f, 0.62f, 0), android.graphics.Shader.TileMode.CLAMP);
+            b = new android.graphics.RadialGradient(width * 0.12f, height * 1.05f, width * 0.65f,
+                    hsv(hue + 40, 0.65f, 0.45f, 0xB3), hsv(hue + 40, 0.65f, 0.45f, 0), android.graphics.Shader.TileMode.CLAMP);
+        }
+
+        @Override protected void onDraw(Canvas c) {
+            c.drawColor(hsv(hue, 0.55f, 0.12f, 0xFF));
+            p.setShader(a);
+            c.drawRect(0, 0, getWidth(), getHeight(), p);
+            p.setShader(b);
+            c.drawRect(0, 0, getWidth(), getHeight(), p);
+        }
     }
 
     /** The thin bars along the top: one for each story, the ones behind filled. */

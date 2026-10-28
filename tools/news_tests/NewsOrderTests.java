@@ -110,6 +110,28 @@ final class NewsOrderTests {
             String l2 = NewsOrder.promptLine(rss, 0, NOW);
             check(l2.contains("photo") && l2.contains("Headline — Body sneaky text"), "rss line " + l2);
         });
+        run("hasMoreOnlyWithMoreToTell", () -> {
+            String summary = "Apple showed a new laptop. It is faster. Orders open on Friday.";
+            check(!NewsOrder.hasMore(summary, Arrays.asList("Chan: Apple showed a new laptop, it is faster."), "https://t.me/chan/5"),
+                    "a short post already told in full");
+            StringBuilder longPost = new StringBuilder("Chan: ");
+            for (int i = 0; i < 60; i++) longPost.append("fact ").append(i).append(". ");
+            check(NewsOrder.hasMore(summary, Arrays.asList(longPost.toString()), "https://t.me/chan/6"), "a long post has more");
+            check(NewsOrder.hasMore(summary, Arrays.asList("Feed: short."), "https://example.com/story"), "an article page has more");
+        });
+        run("spokenCappedAtSentence", () -> {
+            NewsOrder.Story s = story("x", "AI", 1);
+            s.title = "Большая новость";
+            StringBuilder b = new StringBuilder();
+            for (int i = 0; i < 30; i++) b.append("Предложение номер ").append(i).append(" про события. ");
+            s.summary = b.toString().trim();
+            String said = NewsOrder.spoken(s, 500);
+            check(said.startsWith("Большая новость. "), "title first: " + said.substring(0, 20));
+            check(said.length() <= 500 && said.length() > 300, "about 500: " + said.length());
+            check(said.endsWith("."), "ends on a whole sentence: …" + said.substring(said.length() - 10));
+            s.summary = "Коротко.";
+            check(NewsOrder.spoken(s, 500).equals("Большая новость. Коротко."), "short stays whole");
+        });
         run("decay", () -> {
             double d = NewsOrder.decayed(1.0, NOW - 10 * DAY, NOW);
             check(Math.abs(d - Math.pow(0.97, 10)) < 1e-6, "decayed " + d);

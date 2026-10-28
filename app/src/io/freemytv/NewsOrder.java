@@ -22,6 +22,8 @@ final class NewsOrder {
         boolean read, liked;
         List<String> itemIds = new ArrayList<>();
         List<String> texts = new ArrayList<>();   // the sources' own words, for the long retelling on OK
+        boolean more = true;   // OK has more to tell than the screen (false: no "details" on this one)
+        String bg, credit;     // a search for a fitting photo when the story has none; the photographer, when it's used
     }
 
     /** Best first, but no topic more than twice in a row while another topic is still left. */
@@ -105,6 +107,34 @@ final class NewsOrder {
 
     private static String clean(String s) {
         return s == null ? "" : s.replace("<<<", "").replace(">>>", "").replaceAll("\\s+", " ").trim();
+    }
+
+    /**
+     * Whether OK can tell more than the screen already does: an article page always can; a post only when its text is
+     * well longer than the retelling (a short Telegram post is told in full already).
+     */
+    static boolean hasMore(String summary, List<String> texts, String link) {
+        if (link != null && link.startsWith("http") && !link.startsWith("https://t.me/")) return true;
+        int own = 0;
+        for (String x : texts) {
+            int colon = x.indexOf(": ");
+            own += colon >= 0 && colon < 60 ? x.length() - colon - 2 : x.length();
+        }
+        return own > (summary == null ? 0 : summary.length()) * 1.8 + 150;
+    }
+
+    /** What the voice reads for a story: the headline, then the retelling's whole sentences up to about max characters. */
+    static String spoken(Story s, int max) {
+        String title = s.title == null ? "" : s.title.trim();
+        StringBuilder b = new StringBuilder(title);
+        if (!title.isEmpty() && ".!?…".indexOf(title.charAt(title.length() - 1)) < 0) b.append('.');
+        String[] sentences = (s.summary == null ? "" : s.summary.trim()).split("(?<=[.!?…])\\s+");
+        for (String sentence : sentences) {
+            if (sentence.isEmpty()) continue;
+            if (b.length() + 1 + sentence.length() > max && b.length() > title.length() + 1) break;
+            b.append(' ').append(sentence);
+        }
+        return b.toString().trim();
     }
 
     static double decayed(double weight, long likedAt, long now) {

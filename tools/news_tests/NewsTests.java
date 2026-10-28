@@ -145,6 +145,15 @@ public final class NewsTests {
             check(threw, "past the deadline it gives up");
             check(System.currentTimeMillis() - t0 < 1500, "and soon after it");
         }));
+        run("ogImageFromPage", t(() -> {
+            String page = "<html><head><meta property=\"og:title\" content=\"x\"><meta content=\"https://example.com/big.jpg?w=1600&amp;q=80\" "
+                    + "property=\"og:image\"/><meta name=\"twitter:image\" content=\"https://example.com/tw.jpg\"></head></html>";
+            check("https://example.com/big.jpg?w=1600&q=80".equals(NewsFeeds.ogImage(page)), "og:image either attribute order: " + NewsFeeds.ogImage(page));
+            check("https://example.com/tw.jpg".equals(NewsFeeds.ogImage("<meta name='twitter:image' content='https://example.com/tw.jpg'>")),
+                    "twitter:image when there's no og:image");
+            check(NewsFeeds.ogImage("<meta property=\"og:image\" content=\"https://meduza.io/imgly/share/1/x\">") == null, "share card skipped");
+            check(NewsFeeds.ogImage("<html></html>") == null && NewsFeeds.ogImage(null) == null, "none");
+        }));
         run("readCappedStops", t(() -> {
             byte[] big = new byte[3 * 1024 * 1024];
             java.util.Arrays.fill(big, (byte) 'a');
