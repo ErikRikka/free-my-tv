@@ -35,7 +35,7 @@ import java.util.function.Consumer;
 final class News {
     static final String SHELF_ID = "io.freemytv.news";
     private static final long EVERY = 2 * 3600_000L, RETRY = 10 * 60_000L, DAY = 24 * 3600_000L;
-    private static final int BATCH = 60, MAX_KEPT = 80, PAGE_MAX = 2 * 1024 * 1024, STORE_VERSION = 2;
+    private static final int BATCH = 60, MAX_KEPT = 80, PAGE_MAX = 2 * 1024 * 1024, STORE_VERSION = 3;
     private static final String UA = "Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36";
 
     interface Listener { void onNews(); }
@@ -306,6 +306,17 @@ final class News {
                 trim(now);
             }
         }
+        List<NewsOrder.Story> older = new ArrayList<>();   // kept from before this build: their pictures and "more" looked up too
+        synchronized (this) {
+            for (NewsOrder.Story s : stories) if (!s.enriched && !s.read) older.add(s);
+        }
+        if (!older.isEmpty()) {
+            enrich(older);
+            synchronized (this) {
+                countUnread();
+            }
+            notifyListeners();
+        }
         boolean ok = NewsOrder.runSucceeded(jobs.size(), failed, items.size(), batches, okBatches);
         synchronized (this) {
             if (ok) {
@@ -361,6 +372,7 @@ final class News {
                     }
                 }
                 s.more = NewsOrder.hasMore(s.summary, s.texts, s.link);
+                s.enriched = true;
                 if (s.image == null && !Config.UNSPLASH_KEY.trim().isEmpty() && s.bg != null && !s.bg.isEmpty()) {
                     try {
                         unsplash(s);
@@ -635,7 +647,7 @@ final class News {
                 JSONObject j = new JSONObject().put("id", s.id).put("title", s.title).put("summary", s.summary).put("topic", s.topic)
                         .put("flag", s.flag).put("image", s.image == null ? "" : s.image).put("link", s.link).put("source", s.source)
                         .put("score", s.score).put("at", s.at).put("read", s.read).put("liked", s.liked)
-                        .put("items", new JSONArray(s.itemIds)).put("texts", new JSONArray(s.texts)).put("more", s.more)
+                        .put("items", new JSONArray(s.itemIds)).put("texts", new JSONArray(s.texts)).put("more", s.more).put("enriched", s.enriched)
                         .put("credit", s.credit == null ? "" : s.credit);
                 if (s.details != null) j.put("details", s.details);
                 a.put(j);
@@ -681,6 +693,7 @@ final class News {
                     s.liked = j.optBoolean("liked");
                     s.details = j.has("details") ? j.optString("details") : null;
                     s.more = j.optBoolean("more", true);
+                    s.enriched = j.optBoolean("enriched");
                     s.credit = j.optString("credit").isEmpty() ? null : j.optString("credit");
                     JSONArray ids = j.optJSONArray("items"), texts = j.optJSONArray("texts");
                     for (int k = 0; ids != null && k < ids.length(); k++) s.itemIds.add(ids.optString(k));

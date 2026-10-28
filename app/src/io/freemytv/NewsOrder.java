@@ -24,6 +24,7 @@ final class NewsOrder {
         List<String> texts = new ArrayList<>();   // the sources' own words, for the long retelling on OK
         boolean more = true;   // OK has more to tell than the screen (false: no "details" on this one)
         String bg, credit;     // a search for a fitting photo when the story has none; the photographer, when it's used
+        boolean enriched;      // its article's picture and "more" already looked up
     }
 
     /** Best first, but no topic more than twice in a row while another topic is still left. */
