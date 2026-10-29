@@ -154,6 +154,24 @@ public final class NewsTests {
             check(NewsFeeds.ogImage("<meta property=\"og:image\" content=\"https://meduza.io/imgly/share/1/x\">") == null, "share card skipped");
             check(NewsFeeds.ogImage("<html></html>") == null && NewsFeeds.ogImage(null) == null, "none");
         }));
+        run("articleBody", t(() -> {
+            StringBuilder menu = new StringBuilder();
+            for (int i = 0; i < 400; i++) menu.append("<li><a href='/r").append(i).append("'>Рубрика ").append(i).append("</a></li>");
+            String p1 = "Первый абзац статьи, в котором рассказано, что случилось и где именно это произошло вчера вечером.";
+            String p2 = "Второй абзац с подробностями: кто участвовал, что сказали официальные лица и что будет дальше.";
+            String page = "<html><head><script>var x='<p>not this</p>';</script></head><body><header><nav><ul>" + menu
+                    + "</ul></nav></header><article><h1>Заголовок</h1><p>" + p1 + "</p><p class='x'>" + p2
+                    + "</p><p>Читайте также</p></article><footer><p>© Сайт, все права защищены, перепечатка запрещена без ссылки.</p></footer></body></html>";
+            String a = NewsFeeds.article(page);
+            check(a.contains(p1) && a.contains(p2), "both paragraphs: " + a);
+            check(!a.contains("Рубрика") && !a.contains("not this") && !a.contains("права защищены"), "no menu/script/footer: " + a);
+            check(a.indexOf(p1) < a.indexOf(p2), "in order");
+            String bare = "<div><p>" + p1 + "</p><div class='ad'>реклама</div><p>" + p2 + "</p></div>";
+            String b = NewsFeeds.article(bare);
+            check(b.contains(p1) && b.contains(p2) && !b.contains("реклама"), "paragraphs without <article>: " + b);
+            check(NewsFeeds.article("<html><body>Просто текст без абзацев</body></html>").contains("Просто текст"), "falls back to plain");
+            check(NewsFeeds.article(null).isEmpty(), "null");
+        }));
         run("readCappedStops", t(() -> {
             byte[] big = new byte[3 * 1024 * 1024];
             java.util.Arrays.fill(big, (byte) 'a');

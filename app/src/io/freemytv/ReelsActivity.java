@@ -108,10 +108,10 @@ public class ReelsActivity extends Activity {
             + "if(h&&au){var hr=h.getBoundingClientRect(),ar=au.getBoundingClientRect(),now=h.__fmtvShift||0;"
             + "var dy=Math.round(ar.top+ar.height/2-(hr.top-now+hr.height/2))+10;if(dy!==now){h.__fmtvShift=dy;h.style.transform='translateY('+dy+'px)';}}"
             // The caption already holds its text (a line of it shown, then "… more"): two lines of it, "… more" hidden, set
-            // halfway between the author's row and the screen's bottom edge (where the progress bar runs).
+            // right under the author's name (kept above the screen's bottom edge, where the progress bar runs).
             + "var cap=fmtvCaption(el);if(!cap)return;fmtvTwoLines(cap);if(!au)return;"
             + "var cr=cap.getBoundingClientRect(),cs=cap.__fmtvShift||0,top0=cr.top-cs,bottom=innerHeight-(window.__fmtvGapCss||0),"
-            + "a2=au.getBoundingClientRect(),want=a2.bottom+(bottom-a2.bottom-cr.height)/2,d2=Math.round(want-top0);"
+            + "a2=au.getBoundingClientRect(),want=Math.min(a2.bottom+6,bottom-cr.height-12),d2=Math.round(want-top0);"
             + "if(d2!==cs){cap.__fmtvShift=d2;cap.style.setProperty('transform','translateY('+d2+'px)','important');}}"
             + "function fmtvCaption(el){var m=[].find.call(el.querySelectorAll('span'),function(b){var t=(b.innerText||'').trim();return t.length<8&&/more$/.test(t);});"
             + "var c=m&&m.parentElement;return c&&c.children.length===2&&c.children[1]===m?c:null;}"

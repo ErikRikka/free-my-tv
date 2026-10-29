@@ -265,6 +265,27 @@ final class NewsFeeds {
     }
 
     /** Markup and entities out, white space folded. */
+    private static final Pattern CHROME = Pattern.compile(
+            "(?is)<!--.*?-->|<(script|style|noscript|svg|header|nav|footer|aside|form|figcaption)\\b[^>]*>.*?</\\1\\s*>"),
+            ARTICLE = Pattern.compile("(?is)<article\\b[^>]*>(.*)</article\\s*>"),
+            PARA = Pattern.compile("(?is)<(p|h2|h3|li|blockquote)\\b[^>]*>(.*?)</\\1\\s*>");
+
+    /** A news page's own text: its paragraphs, without the menus, footers and scripts around them. */
+    static String article(String html) {
+        if (html == null) return "";
+        String s = CHROME.matcher(html).replaceAll(" ");
+        Matcher a = ARTICLE.matcher(s);
+        if (a.find()) s = a.group(1);
+        StringBuilder out = new StringBuilder();
+        Matcher m = PARA.matcher(s);
+        while (m.find()) {
+            String t = plain(m.group(2));
+            boolean heading = m.group(1).toLowerCase(Locale.ROOT).startsWith("h");
+            if (t.length() >= (heading ? 12 : 60)) out.append(t).append("\n\n");
+        }
+        return out.length() >= 150 ? out.toString().trim() : plain(s);
+    }
+
     static String plain(String html) {
         if (html == null) return "";
         String s = html.replaceAll("(?is)<(script|style)[^>]*>.*?</\\1>", " ").replaceAll("<[^>]*>", " ");
