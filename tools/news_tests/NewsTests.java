@@ -96,6 +96,14 @@ public final class NewsTests {
             check(b.image == null, "emoji is not a photo: " + b.image);
             check(b.text.equals("Average salary & prices"), "entities " + b.text);
         }));
+        run("telegramPicturesOnly", t(() -> {
+            String page = "<div class=\"tgme_widget_message_wrap\"><div class=\"tgme_widget_message\" data-post=\"m/5\">"
+                    + "<a class=\"tgme_widget_message_photo_wrap\" style=\"background-image:url('https://cdn4.telesco.pe/file/m.jpg')\"></a>"
+                    + "<time datetime=\"2026-10-29T10:00:00+00:00\"></time></div></div>";
+            check(NewsFeeds.parseTelegram(page, "m").isEmpty(), "news skip a post with no text");
+            List<NewsFeeds.Item> l = NewsFeeds.parseTelegram(page, "m", true);
+            check(l.size() == 1 && "https://cdn4.telesco.pe/file/m.jpg".equals(l.get(0).image) && l.get(0).text.isEmpty(), "a meme: " + l);
+        }));
         run("imageFilter", t(() -> {
             check(!NewsFeeds.imageAllowed("https://telegram.org/img/emoji/40/X.png"), "emoji");
             check(!NewsFeeds.imageAllowed("https://meduza.io/imgly/share/1/x"), "share card");

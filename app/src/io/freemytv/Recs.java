@@ -786,7 +786,7 @@ final class Recs {
             if (b == null) throw new IOException("unreadable image");
             AppLog.w("backdrop \u201c" + p.title + "\u201d: " + bounds.outWidth + "×" + bounds.outHeight);
             boolean forLight = light;
-            Backdrop backdrop = Backdrop.make(b, forLight);
+            Backdrop backdrop = Backdrop.make(b, forLight, MEMES.equals(p.source));
             if (forLight != light) return;   // the design changed midway: this one is stale
             synchronized (images) {
                 images.put(p.backdrop, backdrop);
@@ -871,6 +871,9 @@ final class Recs {
     static final String KINOWATCH = "watch.kino", KINOPOISK = "ru.kinopoisk.tv";
     /** The VPN's tile: squirrels and fox cubs (Wikimedia Commons photos), no text. */
     static final String NATURE = "nature";
+    /** The Reels tile's top: memes from Telegram channels (memes.txt in local-assets, else these), shown whole. */
+    static final String MEMES = "memes";
+    private static final String[] MEME_CHANNELS = {"memasy", "smeshno", "catmemes"};
     private static final String KINOPUB = "https://api.service-kp.com";
     private static final String KINOPUB_CLIENT = "client_id=xbmc&client_secret=cgg3gtifu46urtfp2zp1nqtba0k2ezxh";   // Kodi's public client
     private final Map<String, List<Pick>> feeds = new HashMap<>();
@@ -932,8 +935,36 @@ final class Recs {
         return out;
     }
 
+    private volatile boolean fetchingMemes;
+    private final ExecutorService memeIo = Executors.newSingleThreadExecutor();   // not behind the other feeds' downloads
+    private volatile long memesFailedAt;
+
+    /** The memes on their own: every 3 hours, 10 minutes after a failure; not held up by the other feeds. */
+    private void refreshMemes(long now) {
+        long at = cache.getLong("memesAt4", 0);
+        if (fetchingMemes || hasFeed(MEMES) && now >= at && now - at < 3 * 3600_000L) return;
+        if (memesFailedAt != 0 && now >= memesFailedAt && now - memesFailedAt < 10 * 60_000L) return;
+        fetchingMemes = true;
+        AppLog.w("memes: fetching");
+        memeIo.execute(() -> {
+            try {
+                putFeed(MEMES, memes());
+                cache.edit().putLong("memesAt4", System.currentTimeMillis()).apply();
+                memesFailedAt = 0;
+                saveFeeds();
+                notifyListeners();
+            } catch (Exception e) {
+                memesFailedAt = System.currentTimeMillis();
+                AppLog.w("memes: " + e.getMessage());
+            } finally {
+                fetchingMemes = false;
+            }
+        });
+    }
+
     private void refreshFeeds() {
         long now = System.currentTimeMillis();
+        if (feedsOn) refreshMemes(now);
         if (!feedsOn || fetchingFeeds) return;
         if (now >= feedsAt && now - feedsAt < 30 * 60_000L) return;
         if (feedsFailedAt != 0 && now >= feedsFailedAt && now - feedsFailedAt < 5 * 60_000L) return;
@@ -969,6 +1000,7 @@ final class Recs {
             } catch (Exception e) {
                 AppLog.w("nature: " + e.getMessage());
             }
+
             try {
                 if (youtube) putFeed(YOUTUBE, youtube());
             } catch (Exception e) {
@@ -1349,6 +1381,73 @@ final class Recs {
             AppLog.w("own pictures: " + e.getMessage());
         }
         return out;
+    }
+
+    private List<Pick> memes() throws Exception {
+        List<String> channels = new ArrayList<>();
+        try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(
+                context.getAssets().open("memes.txt"), StandardCharsets.UTF_8))) {
+            for (String line; (line = r.readLine()) != null; ) {
+                String ch = line.split("#")[0].trim().replaceFirst("^(https?://)?t\\.me/(s/)?", "").replaceFirst("^@", "");
+                if (ch.matches("[A-Za-z0-9_]{3,64}")) channels.add(ch);
+            }
+        } catch (IOException e) {
+            channels.addAll(Arrays.asList(MEME_CHANNELS));
+        }
+        List<List<Pick>> each = new ArrayList<>();
+        for (String ch : channels) {
+            List<Pick> mine = new ArrayList<>();
+            String before = "";
+            for (int page = 0; page < 4 && mine.size() < 50; page++) {   // a page is ~20 posts, newest last
+                String html;
+                try {
+                    html = page("https://t.me/s/" + ch + before);
+                } catch (IOException e) {
+                    AppLog.w("memes " + ch + ": " + e.getMessage());
+                    break;
+                }
+                List<NewsFeeds.Item> posts = NewsFeeds.parseTelegram(html, ch, true);
+                if (posts.isEmpty()) break;
+                for (int i = posts.size() - 1; i >= 0; i--) {
+                    NewsFeeds.Item it = posts.get(i);
+                    if (it.image == null || it.text.length() > 120) continue;   // a meme, not an ad or a post about the channel
+                    Pick p = new Pick();
+                    p.id = it.link.hashCode();
+                    p.kind = "movie";
+                    p.title = "";
+                    p.backdrop = it.image;
+                    p.source = MEMES;
+                    p.detailed = true;
+                    mine.add(p);
+                }
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("/(\\d+)$").matcher(posts.get(0).link);
+                if (!m.find()) break;
+                before = "?before=" + m.group(1);
+            }
+            if (!mine.isEmpty()) each.add(mine);
+        }
+        List<Pick> out = new ArrayList<>();   // the channels taken in turn, newest first
+        for (int i = 0; out.size() < 900; i++) {
+            boolean any = false;
+            for (List<Pick> l : each) if (i < l.size()) { out.add(l.get(i)); any = true; }
+            if (!any) break;
+        }
+        AppLog.w("memes: " + out.size() + " from " + each.size() + " channels");
+        if (out.isEmpty()) throw new IOException("no memes");
+        return out;
+    }
+
+    private String page(String url) throws IOException {
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        c.setConnectTimeout(8000);
+        c.setReadTimeout(15000);
+        c.setRequestProperty("User-Agent", "Mozilla/5.0 (FreeMyTV)");
+        try {
+            if (c.getResponseCode() != 200) throw new IOException("HTTP " + c.getResponseCode());
+            return read(c.getInputStream());
+        } finally {
+            c.disconnect();
+        }
     }
 
     private List<Pick> commonsPhotos(List<Integer> ids) throws Exception {

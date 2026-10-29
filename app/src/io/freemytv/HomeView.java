@@ -164,13 +164,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private long lastKeyAt = SystemClock.uptimeMillis();
     private Ambient ambient;
     /** Like a screensaver: after 30 s without a key, the shown app's picks move on by themselves every 10 s, round. */
+    private static final long FIREPLACE_AFTER = 5 * 60_000L;
     private final Runnable slideshow = new Runnable() {
         @Override public void run() {
             if (!running) return;
             long now = SystemClock.uptimeMillis();
-            if (now - lastKeyAt >= 20 * 60_000L) ambient.start();   // 20 min without a key: a quiet fireplace
-            // ...until the fireplace: after 20 idle minutes no one is looking, and each new pick is a download and a decode.
-            if (now - lastKeyAt >= 30_000 && now - lastKeyAt < 20 * 60_000L && now - shownAt >= 10_000 && cards.size() > 1
+            if (now - lastKeyAt >= FIREPLACE_AFTER) ambient.start();   // 5 min without a key: a quiet fireplace
+            // ...for 20 minutes: then no one is looking, and each new pick is a download and a decode (memes go on: endless).
+            if (now - lastKeyAt >= 30_000 && (now - lastKeyAt < 20 * 60_000L || Recs.MEMES.equals(feedKey)) && now - shownAt >= 10_000 && cards.size() > 1
                     && !sheetOpen && !drawerOpen) {
                 cardIndex = (cardIndex + 1) % cards.size();
                 showCurrentPick();
@@ -2396,6 +2397,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             r = tileRects[shelfIndex];
         }
         click.open();
+        if (News.SHELF_ID.equals(it.pkg)) {   // the tile and the hero's button: the feed, from the story on top
+            Recs.Pick shown = News.SHELF_ID.equals(feedKey) && !cards.isEmpty() ? cards.get(Math.min(cardIndex, cards.size() - 1)) : null;
+            android.content.Intent feed = new android.content.Intent().setClassName("io.freemytv", NewsActivity.class.getName());
+            if (shown != null && "news".equals(shown.source)) feed.putExtra("story", shown.link);
+            activity.startActivity(feed);
+            return;
+        }
         if (it.kind == HomeApps.ALL_APPS) {
             openSheet();
             return;
@@ -2887,6 +2895,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (sheetOpen || zone != Z_SHELF || shelf.isEmpty()) return;
         HomeApps.Item it = shelf.get(Math.min(shelfIndex, shelf.size() - 1));
         String want = it.pkg != null && it.pkg.contains("vpn") && recs.hasFeed(Recs.NATURE) ? Recs.NATURE
+                : ReelsActivity.SHELF_ID.equals(it.pkg) && recs.hasFeed(Recs.MEMES) ? Recs.MEMES
                 : News.SHELF_ID.equals(it.pkg) && News.get(getContext()).unreadCount() > 0 ? News.SHELF_ID
                 : it.pkg != null && recs.hasFeed(it.pkg) ? it.pkg : null;
         if (want == null ? feedKey == null : want.equals(feedKey)) return;
@@ -3015,7 +3024,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             heroPillText = "news".equals(p.source) ? Ui.tr("Ler", "Read") : Ui.tr("Assistir", "Watch");
         }
         float x = MARGIN * k;
-        if (Recs.NATURE.equals(p.source)) {   // the VPN's tile: only the photo
+        if (Recs.NATURE.equals(p.source) || Recs.MEMES.equals(p.source)) {   // the VPN's and Reels' tiles: only the picture
             if (!npText.isEmpty()) drawNowPlaying(c);
             return;
         }

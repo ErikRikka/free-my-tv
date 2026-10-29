@@ -168,16 +168,23 @@ final class NewsFeeds {
 
     /** A channel's web page (t.me/s/channel), its posts oldest first as on the page; text-less posts are skipped. */
     static List<Item> parseTelegram(String html, String channel) {
+        return parseTelegram(html, channel, false);
+    }
+
+    /** With `pictures`, posts that are only a picture (memes) count too, with an empty text. */
+    static List<Item> parseTelegram(String html, String channel, boolean pictures) {
         List<Item> out = new ArrayList<>();
         if (html == null) return out;
         Matcher b = TG_BLOCK.matcher(html);
         while (b.find()) {
             String blk = b.group(1);
             Matcher tx = TG_TEXT.matcher(blk);
-            if (!tx.find()) continue;
+            boolean said = tx.find();
+            if (!said && !pictures) continue;
+            if (pictures && blk.contains("tgme_widget_message_video")) continue;   // a video's still is no meme
             Item it = new Item();
             it.source = channel;
-            it.text = plain(tx.group(1).replaceAll("(?i)<br\\s*/?>", " "));
+            it.text = said ? plain(tx.group(1).replaceAll("(?i)<br\\s*/?>", " ")) : "";
             it.title = it.text.length() > 140 ? it.text.substring(0, 140) : it.text;
             Matcher p = TG_POST.matcher(blk);
             it.link = p.find() ? "https://t.me/" + p.group(1) : "";

@@ -50,12 +50,47 @@ final class Backdrop {
     }
 
     static Backdrop make(Bitmap src, boolean forLight) {
+        return make(src, forLight, false);
+    }
+
+    /** With `whole` (a meme: its text must not be cropped), the picture whole above the shelf, on a blurred copy of itself. */
+    static Backdrop make(Bitmap src, boolean forLight, boolean whole) {
         Bitmap out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(out);
         Paint photo = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
         float scale = Math.max((float) W / src.getWidth(), (float) H / src.getHeight());
         float sw = src.getWidth() * scale, sh = src.getHeight() * scale;
         c.drawBitmap(src, null, new RectF((W - sw) / 2, (H - sh) / 2, (W + sw) / 2, (H + sh) / 2), photo);
+        if (whole) {
+            Bitmap soft = Bitmap.createBitmap(reduce(out, FW, FH, 3, 3), FW, FH, Bitmap.Config.ARGB_8888);
+            c.drawBitmap(soft, null, new RectF(0, 0, W, H), photo);
+            soft.recycle();
+            c.drawColor(black(0.45f));
+            float top = H * 0.06f, bottom = H * 0.73f, maxW = W * 0.45f;
+            float fit = Math.min(maxW / src.getWidth(), (bottom - top) / src.getHeight());
+            float fw = src.getWidth() * fit, fh = src.getHeight() * fit, x = (W - fw) / 2, y = top + (bottom - top - fh) / 2;
+            RectF r = new RectF(x, y, x + fw, y + fh);
+            Paint shadow = new Paint(Paint.ANTI_ALIAS_FLAG);
+            shadow.setColor(black(0.5f));
+            shadow.setShadowLayer(48, 0, 16, black(0.6f));
+            float round = H * 0.02f;
+            c.drawRoundRect(r, round, round, shadow);
+            c.save();
+            android.graphics.Path clip = new android.graphics.Path();
+            clip.addRoundRect(r, round, round, android.graphics.Path.Direction.CW);
+            c.clipPath(clip);
+            c.drawBitmap(src, null, r, photo);
+            c.restore();
+            src.recycle();
+            Paint scrim = new Paint(Paint.DITHER_FLAG);   // only the shelf's: no text over a meme
+            scrim.setShader(new LinearGradient(0, H, 0, H * 0.6f, new int[] {black(0.35f), 0}, null, Shader.TileMode.CLAMP));
+            c.drawRect(0, H * 0.6f, W, H, scrim);
+            int[] frost = reduce(out, FW, FH, 3, 3);
+            int[] glass = reduce(out, GW, GH, 2, 2);
+            if (!forLight) return new Backdrop(gpu(out), frost, glass, null, null, null, null, null, null);
+            return new Backdrop(gpu(out), frost, null, null, null, darken(frost.clone(), 0.14f), darken(glass.clone(), 0.08f),
+                    darken(frost.clone(), 0.55f), darken(glass, 0.45f));
+        }
         src.recycle();
         if (forLight) {
             // tvOS 17 home: the photo full screen with its scrims; the glass shows it through, a bit darker at night.

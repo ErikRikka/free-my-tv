@@ -33,6 +33,7 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -75,7 +76,14 @@ public class NewsActivity extends Activity {
         news = News.get(this);
         stories = news.unreadOrdered();
         String start = getIntent().getStringExtra("story");
-        for (int i = 0; start != null && i < stories.size(); i++) if (stories.get(i).id.equals(start)) index = i;
+        for (int i = 0; start != null && i < stories.size(); i++) {
+            if (stories.get(i).id.equals(start)) {   // from the story on top, then the rest: the end means all of them read
+                List<NewsOrder.Story> from = new ArrayList<>(stories.subList(i, stories.size()));
+                from.addAll(stories.subList(0, i));
+                stories = from;
+                break;
+            }
+        }
 
         root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
