@@ -34,7 +34,7 @@ import java.util.function.Consumer;
  */
 final class News {
     static final String SHELF_ID = "io.freemytv.news";
-    private static final long EVERY = 2 * 3600_000L, RETRY = 10 * 60_000L, DAY = 24 * 3600_000L;
+    private static final long EVERY = 3600_000L, ALL_READ = 20 * 60_000L, RETRY = 10 * 60_000L, DAY = 24 * 3600_000L;
     private static final int BATCH = 60, MAX_KEPT = 80, PAGE_MAX = 2 * 1024 * 1024, STORE_VERSION = 5,
             ARTICLE_MAX = 15_000, DETAILS_VERSION = 2;   // DETAILS_VERSION: a new way of retelling drops the old retellings
     private static final String UA = "Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36";
@@ -85,12 +85,12 @@ final class News {
         listeners.remove(l);
     }
 
-    /** Collects again 2 h after the last success (10 min after a failure); the work runs on its own thread. */
+    /** Collects again an hour after the last success, 20 min once all is read (10 min after a failure); on its own thread. */
     void refreshIfStale() {
         if (!enabled() || busy) return;
         long now = System.currentTimeMillis();
         if (failedAt != 0 && now - failedAt >= 0 && now - failedAt < RETRY) return;
-        if (lastOk != 0 && now - lastOk >= 0 && now - lastOk < EVERY) return;
+        if (lastOk != 0 && now - lastOk >= 0 && now - lastOk < every()) return;
         busy = true;
         work.execute(() -> {
             try {
@@ -104,10 +104,14 @@ final class News {
         });
     }
 
+    private long every() {
+        return unread == 0 ? ALL_READ : EVERY;
+    }
+
     /** When new stories may come next (for the feed's last screen). */
     synchronized long nextUpdateAt() {
         long now = System.currentTimeMillis();
-        return lastOk == 0 || lastOk + EVERY < now ? now + RETRY : lastOk + EVERY;
+        return lastOk == 0 || lastOk + every() < now ? now + RETRY : lastOk + every();
     }
 
     synchronized List<NewsOrder.Story> unreadOrdered() {

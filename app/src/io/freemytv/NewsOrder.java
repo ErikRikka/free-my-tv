@@ -11,7 +11,7 @@ import java.util.Set;
 final class NewsOrder {
     private NewsOrder() {}
 
-    static final int PER_DAY = 50, MAX_BATCH_INPUT = 120, MAX_RUN = 2;
+    static final int PER_DAY = 100, MAX_BATCH_INPUT = 120, MAX_RUN = 2;
     static final long FRESH = 36 * 3600_000L;
     private static final long DAY = 24 * 3600_000L;
 

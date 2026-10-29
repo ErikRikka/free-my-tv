@@ -48,12 +48,12 @@ final class NewsOrderTests {
         run("capDailyRespectsToday", () -> {
             List<NewsOrder.Story> c = new ArrayList<>();
             for (int i = 0; i < 60; i++) c.add(story("s" + i, "T", i));
-            List<NewsOrder.Story> kept = NewsOrder.capDaily(c, 10);
+            List<NewsOrder.Story> kept = NewsOrder.capDaily(c, NewsOrder.PER_DAY - 40);
             check(kept.size() == 40, "keeps 40, got " + kept.size());
             int min = Integer.MAX_VALUE;
             for (NewsOrder.Story s : kept) min = Math.min(min, s.score);
             check(min == 20, "the best 40, lowest kept " + min);
-            check(NewsOrder.capDaily(c, 55).isEmpty(), "none when over the cap");
+            check(NewsOrder.capDaily(c, NewsOrder.PER_DAY + 5).isEmpty(), "none when over the cap");
         });
         run("freshestFilters", () -> {
             List<NewsFeeds.Item> items = new ArrayList<>();

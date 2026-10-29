@@ -170,8 +170,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             if (!running) return;
             long now = SystemClock.uptimeMillis();
             if (now - lastKeyAt >= FIREPLACE_AFTER) ambient.start();   // 5 min without a key: a quiet fireplace
-            // ...for 20 minutes: then no one is looking, and each new pick is a download and a decode (memes go on: endless).
-            if (now - lastKeyAt >= 30_000 && (now - lastKeyAt < 20 * 60_000L || Recs.MEMES.equals(feedKey)) && now - shownAt >= 10_000 && cards.size() > 1
+            // ...for 20 minutes: then no one is looking, and each new pick is a download and a decode (the pictures go on).
+            // The VPN's and Reels' pictures change on their own every 8 s while the tile is focused, without end.
+            // (the news a little slower: there's a summary to read)
+            boolean pictures = Recs.MEMES.equals(feedKey) || Recs.NATURE.equals(feedKey), news = News.SHELF_ID.equals(feedKey);
+            if ((pictures || news ? now - lastKeyAt >= 3000 && now - shownAt >= (news ? 12_000 : 8000)
+                    : now - lastKeyAt >= 30_000 && now - lastKeyAt < 20 * 60_000L && now - shownAt >= 10_000) && cards.size() > 1
                     && !sheetOpen && !drawerOpen) {
                 cardIndex = (cardIndex + 1) % cards.size();
                 showCurrentPick();
