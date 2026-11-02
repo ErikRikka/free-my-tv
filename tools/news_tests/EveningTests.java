@@ -75,6 +75,13 @@ final class EveningTests {
             EveningPicks.remember(h, Arrays.asList(item("Новое", "x")), now);
             check(h.get(EveningPicks.key("Новое")) == now, "remembered");
         });
+        run("retriesCappedPerDay", () -> {
+            long now = msk(2, 18, 0), half = 30 * 60_000L;
+            check(EveningPicks.mayRetry(0, 0, now), "no failure yet");
+            check(!EveningPicks.mayRetry(1, now - half + 1, now), "within 30 min of a failure");
+            check(EveningPicks.mayRetry(2, now - half, now), "30 min after the 2nd failure");
+            check(!EveningPicks.mayRetry(3, now - 5 * half, now), "3 failures today: done until tomorrow");
+        });
         run("dueOncePerDayAfter15", () -> {
             long yesterday = msk(1, 16, 0), today = msk(2, 15, 5);
             check(!EveningPicks.due(yesterday, msk(2, 14, 59), MSK), "before 15:00");

@@ -87,6 +87,15 @@ final class EveningPicks {
         history.values().removeIf(at -> now - at > KEEP);
     }
 
+    static final int MAX_TRIES = 3;
+    static final long RETRY = 30 * 60_000L;
+
+    /** Another try after failures today: at most 3 a day (each costs web searches), 30 min apart. */
+    static boolean mayRetry(int failsToday, long failedAt, long now) {
+        if (failsToday >= MAX_TRIES) return false;
+        return failedAt <= 0 || now < failedAt || now - failedAt >= RETRY;
+    }
+
     /** At or after 15:00 local time, and not built yet on today's date. */
     static boolean due(long lastBuilt, long now, TimeZone tz) {
         Calendar c = Calendar.getInstance(tz);

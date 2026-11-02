@@ -46,6 +46,11 @@ final class EveningShelf {
     private final String[] posterTitle = new String[4], posterWhy = new String[4], rowTitle = new String[7], rowWhy = new String[7];
     Spring[] focus = springs(4 + MAX_ROWS + 1), listFocus = springs(7);
     private float k = 1;
+    // Built when the picks or the layout change, so drawing allocates nothing
+    private String tonightLabel = "", builtLabel = "", cringeLabel = "", allLabel = "", tipOnly = "", seenLabel = "";
+    private float tonightW, vhsW, allW, tipOnlyW, seenW;
+    /** The focused row's "Watched" button has the focus instead of the row (→ from the row). */
+    boolean checkFocused;
     private final TextPaint head = new TextPaint(Paint.ANTI_ALIAS_FLAG), small = new TextPaint(Paint.ANTI_ALIAS_FLAG),
             title = new TextPaint(Paint.ANTI_ALIAS_FLAG), why = new TextPaint(Paint.ANTI_ALIAS_FLAG),
             chip = new TextPaint(Paint.ANTI_ALIAS_FLAG);
@@ -102,6 +107,18 @@ final class EveningShelf {
         cringe = new ArrayList<>(c.subList(0, Math.min(7, c.size())));
         built = builtAt <= 0 ? "" : new java.text.SimpleDateFormat("HH:mm", java.util.Locale.ROOT).format(new java.util.Date(builtAt));
         prepareText();
+        java.util.Set<String> keep = new java.util.HashSet<>();
+        for (EveningPicks.Item i : posters) keep.add(i.image);
+        for (EveningPicks.Item i : cringe) keep.add(i.image);
+        synchronized (images) {   // yesterday's pictures go: the launcher runs for weeks
+            for (java.util.Iterator<Map.Entry<String, Bitmap>> it = images.entrySet().iterator(); it.hasNext(); ) {
+                Map.Entry<String, Bitmap> e = it.next();
+                if (!keep.contains(e.getKey())) {
+                    e.getValue().recycle();
+                    it.remove();
+                }
+            }
+        }
         for (int i = 0; i < posters.size(); i++) want(posters.get(i).image, true);
         for (EveningPicks.Item i : cringe) want(i.image, false);
     }
@@ -127,7 +144,19 @@ final class EveningShelf {
     }
 
     private void prepareText() {
-        float pw = posterRects[0].width() - 24 * k, rw = rowRects[0].width() - 140 * k, lw = listRects[0].width() - 140 * k;
+        tonightLabel = Ui.tr("Para esta noite", "Tonight");
+        builtLabel = built.isEmpty() ? "" : Ui.tr("feito hoje às ", "picked today at ") + built;
+        cringeLabel = Ui.tr("Cringe para esta noite", "Cringe for tonight");
+        allLabel = String.format(Ui.tr("Todas as %d dicas  ›", "All %d tips  ›"), listCount());
+        tipOnly = Ui.tr("só dica", "tip only");
+        seenLabel = "✓ " + Ui.tr("Vi", "Watched");
+        seenW = small.measureText(seenLabel);
+        tonightW = head.measureText(tonightLabel);
+        vhsW = chip.measureText("VHS");
+        allW = small.measureText(allLabel);
+        tipOnlyW = small.measureText(tipOnly);
+        float pill = small.measureText("✓ " + Ui.tr("Vi", "Watched")) + 60 * k;
+        float pw = posterRects[0].width() - 24 * k, rw = rowRects[0].width() - 140 * k - pill, lw = listRects[0].width() - 140 * k - pill;
         for (int i = 0; i < 4; i++) {
             EveningPicks.Item p = i < posters.size() ? posters.get(i) : null;
             posterTitle[i] = p == null ? "" : TextUtils.ellipsize(p.title, title, Math.max(1, pw), TextUtils.TruncateAt.END).toString();
@@ -153,11 +182,10 @@ final class EveningShelf {
     void draw(Canvas c, int ink, int dim, boolean night) {
         float pad = 28 * k, base = card.top + 46 * k;
         head.setColor(ink);
-        c.drawText(Ui.tr("Para esta noite", "Tonight"), card.left + pad, base, head);
-        if (!built.isEmpty()) {
+        c.drawText(tonightLabel, card.left + pad, base, head);
+        if (!builtLabel.isEmpty()) {
             small.setColor(dim);
-            float x = card.left + pad + head.measureText(Ui.tr("Para esta noite", "Tonight")) + 14 * k;
-            c.drawText(Ui.tr("feito hoje às ", "picked today at ") + built, x, base, small);
+            c.drawText(builtLabel, card.left + pad + tonightW + 14 * k, base, small);
         }
         int top = -1;
         for (int i = 0; i < posters.size(); i++) if (focus[i].value > 0.02f && (top < 0 || focus[i].value > focus[top].value)) top = i;
@@ -169,34 +197,33 @@ final class EveningShelf {
         fill.setShader(null);
         fill.setColor(Ui.alpha(ink, 0.14f));
         c.drawRect(sx - 31 * k, card.top + 70 * k, sx - 30 * k, card.bottom - 26 * k, fill);
-        float cw = chip.measureText("VHS") + 16 * k;
+        float cw = vhsW + 16 * k;
         tmp.set(sx, base - 21 * k, sx + cw, base + 5 * k);
         fill.setColor(AMBER);
         c.drawRoundRect(tmp, 5 * k, 5 * k, fill);
         chip.setColor(AMBER_INK);
         c.drawText("VHS", sx + 8 * k, base - 2 * k, chip);
         head.setColor(night ? 0xFFFAC775 : 0xFF854F0B);
-        c.drawText(Ui.tr("Cringe para esta noite", "Cringe for tonight"), sx + cw + 12 * k, base, head);
-        for (int i = 0; i < rowCount(); i++) drawRow(c, rowRects[i], i, focus[4 + i].value, ink, night);
+        c.drawText(cringeLabel, sx + cw + 12 * k, base, head);
+        for (int i = 0; i < rowCount(); i++) drawRow(c, rowRects[i], i, focus[4 + i].value, ink, night, checkFocused && focus[4 + i].target > 0.5f);
         if (hasAll()) {
             float f = Ui.clamp(focus[4 + MAX_ROWS].value);
             RectF r = rowRects[MAX_ROWS];
-            String label = String.format(Ui.tr("Todas as %d dicas  ›", "All %d tips  ›"), listCount());
             small.setColor(f > 0.5f ? 0xFF111114 : dim);
-            float lw = small.measureText(label) + 28 * k;
+            float lw = allW + 28 * k;
             tmp.set(r.left, r.centerY() - 17 * k, r.left + lw, r.centerY() + 17 * k);
             if (f > 0.01f) {
                 fill.setColor(Ui.alpha(0xFFFFFFFF, f));
                 c.drawRoundRect(tmp, 17 * k, 17 * k, fill);
             }
-            c.drawText(label, r.left + 14 * k, r.centerY() + 6 * k, small);
+            c.drawText(allLabel, r.left + 14 * k, r.centerY() + 6 * k, small);
         }
     }
 
     /** The whole cringe list, over the drawer (the glass under it is the caller's). */
     void drawList(Canvas c, int ink, boolean night) {
         float pad = 28 * k, base = list.top + 50 * k;
-        float cw = chip.measureText("VHS") + 16 * k;
+        float cw = vhsW + 16 * k;
         tmp.set(list.left + pad, base - 21 * k, list.left + pad + cw, base + 5 * k);
         fill.setShader(null);
         fill.setColor(AMBER);
@@ -204,8 +231,8 @@ final class EveningShelf {
         chip.setColor(AMBER_INK);
         c.drawText("VHS", list.left + pad + 8 * k, base - 2 * k, chip);
         head.setColor(night ? 0xFFFAC775 : 0xFF854F0B);
-        c.drawText(Ui.tr("Cringe para esta noite", "Cringe for tonight"), list.left + pad + cw + 12 * k, base, head);
-        for (int i = 0; i < listCount(); i++) drawRow(c, listRects[i], i, listFocus[i].value, ink, night);
+        c.drawText(cringeLabel, list.left + pad + cw + 12 * k, base, head);
+        for (int i = 0; i < listCount(); i++) drawRow(c, listRects[i], i, listFocus[i].value, ink, night, checkFocused && listFocus[i].target > 0.5f);
     }
 
     private void drawPoster(Canvas c, int i) {
@@ -238,8 +265,9 @@ final class EveningShelf {
         c.restore();
     }
 
-    private void drawRow(Canvas c, RectF r, int i, float focusValue, int ink, boolean night) {
+    private void drawRow(Canvas c, RectF r, int i, float focusValue, int ink, boolean night, boolean onCheck) {
         float f = Ui.clamp(focusValue);
+        if (onCheck) f = Math.min(f, 0.35f);   // the row stays lit, the button takes the white
         if (f > 0.01f) {
             fill.setShader(null);
             fill.setColor(Ui.alpha(0xFFFFFFFF, f));
@@ -260,10 +288,16 @@ final class EveningShelf {
         why.setColor(f > 0.5f ? 0xFF854F0B : night ? 0xFFFAC775 : 0xFF854F0B);
         c.drawText(rowTitle[i], x, r.top + r.height() * 0.44f, title);
         c.drawText(rowWhy[i], x, r.top + r.height() * 0.80f, why);
+        // "✓ Watched": a pill at the row's end, white when it has the focus (→ from the row)
+        float pw = seenW + 32 * k, ph = Math.min(38 * k, r.height() - 16 * k);
+        tmp.set(r.right - 10 * k - pw, r.centerY() - ph / 2, r.right - 10 * k, r.centerY() + ph / 2);
+        fill.setColor(onCheck ? 0xFFFFFFFF : f > 0.5f ? 0x1A111114 : Ui.alpha(ink, 0.12f));
+        c.drawRoundRect(tmp, ph / 2, ph / 2, fill);
+        small.setColor(onCheck || f > 0.5f ? 0xFF111114 : Ui.alpha(ink, 0.8f));
+        c.drawText(seenLabel, tmp.left + 16 * k, tmp.centerY() + 6 * k, small);
         if (!item.playable()) {
             small.setColor(f > 0.5f ? 0x99111114 : Ui.alpha(ink, 0.5f));
-            String t = Ui.tr("só dica", "tip only");
-            c.drawText(t, r.right - 14 * k - small.measureText(t), r.top + r.height() * 0.44f, small);
+            c.drawText(tipOnly, tmp.left - 14 * k - tipOnlyW, r.top + r.height() * 0.44f, small);
         }
     }
 

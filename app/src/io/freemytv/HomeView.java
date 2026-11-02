@@ -656,6 +656,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             zone = Z_DRAWER;
             eveningList = false;
         }
+        // fewer picks than before: the focus stays on something that's there
+        if (eveningIndex < 4 && eveningIndex >= evening.posterCount()) eveningIndex = evening.posterCount() > 0 ? evening.posterCount() - 1 : 4;
+        if (eveningIndex >= 4 && eveningIndex < 4 + 3 && eveningIndex >= 4 + evening.rowCount()) eveningIndex = 4 + Math.max(0, evening.rowCount() - 1);
+        if (eveningIndex == 4 + 3 && !evening.hasAll()) eveningIndex = 4 + Math.max(0, evening.rowCount() - 1);
+        listIndex = Math.max(0, Math.min(listIndex, evening.listCount() - 1));
+        if (eveningList && evening.listCount() == 0) eveningList = false;
+        retarget(false);
         layoutDrawer();
     }
 
@@ -1722,6 +1729,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private void closeDrawer() {
         eveningList = false;
+        evening.checkFocused = false;
         drawerOpen = false;
         drawer.target = 0;
         zone = Z_SHELF;
@@ -2301,12 +2309,24 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** Posters 0–3, then the shelf's rows 4–6 and "All" 7; in the open list, its rows. False when nothing moved. */
     private boolean moveEvening(int dx, int dy) {
+        boolean onRow = eveningList || eveningIndex >= 4 && eveningIndex < 4 + evening.rowCount();
+        if (onRow && dx > 0 && !evening.checkFocused) {   // → from a cringe row: its "Watched" button
+            evening.checkFocused = true;
+            drawerDirty = true;
+            return true;
+        }
+        if (onRow && dx < 0 && evening.checkFocused) {
+            evening.checkFocused = false;
+            drawerDirty = true;
+            return true;
+        }
         if (eveningList) {
             int next = Math.max(0, Math.min(evening.listCount() - 1, listIndex + dy));
             if (dx != 0 || next == listIndex) return false;
             listIndex = next;
             return true;
         }
+        if (eveningIndex == 4 + 3 || dy == 0) evening.checkFocused = false;
         int posters = evening.posterCount(), rows = evening.rowCount(), last = evening.hasAll() ? 4 + 3 : 4 + rows - 1;
         boolean onPoster = eveningIndex < 4;
         if (onPoster) {
@@ -2478,7 +2498,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         RectF r;
         if (!sheetOpen && zone == WIDGETS) return;   // a widget is only read
         if (!sheetOpen && zone == Z_EVENING) {
-            if (eveningList) {
+            EveningPicks.Item row = eveningList ? evening.listItem(listIndex) : eveningIndex >= 4 ? evening.at(eveningIndex) : null;
+            if (evening.checkFocused && row != null) {   // "Watched": the next tip takes its place
+                click.open();
+                Evening.get(getContext()).watched(row);
+                showToast(Ui.tr("Visto. Aqui vai outro.", "Watched. Here's another one."));
+            } else if (eveningList) {
                 playEvening(evening.listItem(listIndex));
             } else if (eveningIndex == 4 + 3) {
                 click.open();

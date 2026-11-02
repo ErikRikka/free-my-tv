@@ -1299,7 +1299,7 @@ final class Recs {
     }
 
     /** kino.pub's access token (a day long), refreshed with the saved refresh token, which changes every time. :home only. */
-    private String kinopubToken() throws Exception {
+    private synchronized String kinopubToken() throws Exception {   // one refresh at a time: two would sign each other out
         SharedPreferences sp = context.getSharedPreferences("kinopub", Context.MODE_PRIVATE);
         String seed = Config.KINOPUB_REFRESH_TOKEN.trim();
         if (!seed.equals(sp.getString("seed", ""))) sp.edit().clear().putString("seed", seed).putString("refresh", seed).commit();

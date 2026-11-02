@@ -192,6 +192,8 @@ final class German {
             case "Only a tip: look for ": return "Nur ein Tipp: such nach ";
             case "Couldn't open it.": return "Ließ sich nicht öffnen.";
             case "Tonight's picks": return "Tipps für heute Abend";
+            case "Watched": return "Gesehen";
+            case "Watched. Here's another one.": return "Gesehen. Hier ist der nächste.";
             case "Watch": return "Ansehen";
             case "Tomorrow": return "Morgen";
             case "Popular": return "Beliebt";

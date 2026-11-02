@@ -136,6 +136,8 @@ final class Spanish {
             case "Only a tip: look for ": return "Solo un consejo: busca ";
             case "Couldn't open it.": return "No se pudo abrir.";
             case "Tonight's picks": return "Sugerencias para esta noche";
+            case "Watched": return "Visto";
+            case "Watched. Here's another one.": return "Visto. Aquí va otro.";
             case "Watch": return "Ver";
             case "Tomorrow": return "Mañana";
             case "Popular": return "Popular";

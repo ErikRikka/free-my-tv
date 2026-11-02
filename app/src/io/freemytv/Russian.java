@@ -95,6 +95,8 @@ final class Russian {
             case "Only a tip: look for ": return "Это только совет, поищите ";
             case "Couldn't open it.": return "Не получилось открыть.";
             case "Tonight's picks": return "Подборка на вечер";
+            case "Watched": return "Смотрел";
+            case "Watched. Here's another one.": return "Отмечено. Вот следующий.";
             case "Watch": return "Смотреть";
             case "Tomorrow": return "Завтра";
             case "Popular": return "Популярное";
