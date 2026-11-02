@@ -1103,8 +1103,118 @@ final class Recs {
         if (best == null || bestScore < 2) return null;
         String shown = best.optString("title");
         int cut = shown.indexOf(" / ");
+        JSONObject posters = best.optJSONObject("posters");
+        String poster = posters == null ? "" : posters.optString("big", posters.optString("medium", ""));
         return new JSONObject().put("id", best.optInt("id")).put("title", cut > 0 ? shown.substring(0, cut) : shown)
-                .put("year", best.optInt("year"));
+                .put("year", best.optInt("year")).put("poster", poster).put("type", best.optString("type"));
+    }
+
+    // MARK: - Taste, for the evening picks (each source on its own: one that's down returns nothing)
+
+    /** What was watched on KINO.WATCH lately, newest first (titles before " / "). */
+    List<String> kinopubWatchedTitles(int max) {
+        List<String> out = new ArrayList<>();
+        if (Config.KINOPUB_REFRESH_TOKEN.trim().isEmpty()) return out;
+        try {
+            JSONObject o = kinopub(kinopubToken(), "/v1/history?perpage=50");
+            JSONArray h = o.optJSONArray("history") != null ? o.optJSONArray("history") : o.optJSONArray("items");
+            for (int i = 0; h != null && i < h.length() && out.size() < max; i++) {
+                JSONObject e = h.getJSONObject(i);
+                addTitle(out, e.optJSONObject("item") != null ? e.getJSONObject("item") : e);
+            }
+        } catch (Exception e) {
+            AppLog.w("kino.watch history: " + e.getMessage());
+        }
+        return out;
+    }
+
+    /** What was bookmarked on KINO.WATCH, across its folders. */
+    List<String> kinopubBookmarkTitles(int max) {
+        List<String> out = new ArrayList<>();
+        if (Config.KINOPUB_REFRESH_TOKEN.trim().isEmpty()) return out;
+        try {
+            String token = kinopubToken();
+            JSONArray folders = optItems(token, "/v1/bookmarks");
+            for (int f = 0; folders != null && f < folders.length() && out.size() < max; f++) {
+                JSONArray items = optItems(token, "/v1/bookmarks/" + folders.getJSONObject(f).optInt("id"));
+                for (int i = 0; items != null && i < items.length() && out.size() < max; i++) addTitle(out, items.getJSONObject(i));
+            }
+        } catch (Exception e) {
+            AppLog.w("kino.watch bookmarks: " + e.getMessage());
+        }
+        return out;
+    }
+
+    private static void addTitle(List<String> out, JSONObject item) {
+        String t = item.optString("title");
+        int cut = t.indexOf(" / ");
+        t = (cut > 0 ? t.substring(0, cut) : t).trim();
+        if (!t.isEmpty() && !out.contains(t)) out.add(t);
+    }
+
+    /** The channels the YouTube account follows. */
+    List<String> youtubeChannels(int max) {
+        List<String> out = new ArrayList<>();
+        if (!youtubeConfigured()) return out;
+        try {
+            String page = "";
+            while (out.size() < max) {
+                JSONObject o = youtubeGet("/subscriptions?part=snippet&mine=true&maxResults=50&order=relevance" + page);
+                JSONArray items = o.optJSONArray("items");
+                for (int i = 0; items != null && i < items.length() && out.size() < max; i++) {
+                    out.add(items.getJSONObject(i).getJSONObject("snippet").optString("title"));
+                }
+                String next = o.optString("nextPageToken", "");
+                if (next.isEmpty()) break;
+                page = "&pageToken=" + next;
+            }
+        } catch (Exception e) {
+            AppLog.w("youtube channels: " + e.getMessage());
+        }
+        return out;
+    }
+
+    /** Titles of the videos the account liked, newest first. */
+    List<String> youtubeLikedTitles(int max) {
+        List<String> out = new ArrayList<>();
+        if (!youtubeConfigured()) return out;
+        try {
+            JSONArray items = youtubeGet("/videos?part=snippet&myRating=like&maxResults=" + Math.min(50, max)).optJSONArray("items");
+            for (int i = 0; items != null && i < items.length(); i++) out.add(items.getJSONObject(i).getJSONObject("snippet").optString("title"));
+        } catch (Exception e) {
+            AppLog.w("youtube likes: " + e.getMessage());
+        }
+        return out;
+    }
+
+    /** The first YouTube video for a search that runs at least a minute: {id, title, channel, image, seconds}, or null. */
+    JSONObject youtubeVideo(String query) {
+        if (!youtubeConfigured() || query == null || query.trim().isEmpty()) return null;
+        try {
+            JSONArray hits = youtubeGet("/search?part=snippet&type=video&maxResults=5&q=" + URLEncoder.encode(query, "UTF-8")).optJSONArray("items");
+            StringBuilder ids = new StringBuilder();
+            for (int i = 0; hits != null && i < hits.length(); i++) {
+                String id = hits.getJSONObject(i).getJSONObject("id").optString("videoId", "");
+                if (!id.isEmpty()) ids.append(ids.length() == 0 ? "" : ",").append(id);
+            }
+            if (ids.length() == 0) return null;
+            JSONArray vs = youtubeGet("/videos?part=snippet,contentDetails&id=" + ids).optJSONArray("items");
+            for (int i = 0; vs != null && i < vs.length(); i++) {
+                JSONObject v = vs.getJSONObject(i), sn = v.getJSONObject("snippet");
+                long seconds = isoSeconds(v.getJSONObject("contentDetails").optString("duration"));
+                if (seconds < 60) continue;   // a Short: not for a TV evening
+                JSONObject th = sn.optJSONObject("thumbnails");
+                String image = "";
+                for (String size : new String[] {"maxres", "standard", "high", "medium"}) {
+                    if (image.isEmpty() && th != null && th.optJSONObject(size) != null) image = th.getJSONObject(size).optString("url");
+                }
+                return new JSONObject().put("id", v.optString("id")).put("title", sn.optString("title"))
+                        .put("channel", sn.optString("channelTitle")).put("image", image).put("seconds", seconds);
+            }
+        } catch (Exception e) {
+            AppLog.w("youtube video: " + e.getMessage());
+        }
+        return null;
     }
 
     private static String normalize(String s) {
