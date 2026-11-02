@@ -189,9 +189,10 @@ final class VoiceSession extends VoiceInteractionSession {
         }
     }
 
+    /** In a live conversation, a walkie-talkie's button (Live.button); otherwise it ends the conversation. */
     private void micButton() {
         Live l = live;
-        if (l != null && l.micAsleep()) l.wake();
+        if (l != null) l.button();
         else end();
     }
 

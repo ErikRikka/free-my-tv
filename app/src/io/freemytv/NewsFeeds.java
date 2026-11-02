@@ -293,6 +293,21 @@ final class NewsFeeds {
         return out.length() >= 150 ? out.toString().trim() : plain(s);
     }
 
+    /** Bigger versions of a small picture's address, best first (Meduza's sizes, WordPress's "-300x200", "?w=640"). */
+    static List<String> biggerVersions(String url) {
+        List<String> out = new ArrayList<>();
+        if (url == null) return out;
+        if (url.contains("meduza.io/") && url.contains("/small/")) {
+            out.add(url.replace("/small/", "/original/"));
+            out.add(url.replace("/small/", "/large/"));
+        }
+        String wp = url.replaceFirst("-\\d{2,4}x\\d{2,4}(\\.(?:jpe?g|png|webp))", "$1");
+        if (!wp.equals(url)) out.add(wp);
+        String wide = url.replaceFirst("([?&](?:w|width)=)\\d{2,4}", "$11600");
+        if (!wide.equals(url)) out.add(wide);
+        return out;
+    }
+
     static String plain(String html) {
         if (html == null) return "";
         String s = html.replaceAll("(?is)<(script|style)[^>]*>.*?</\\1>", " ").replaceAll("<[^>]*>", " ");

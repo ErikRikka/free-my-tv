@@ -121,6 +121,13 @@ final class Spanish {
             case "YouTube, Prime Video and Google Play: the TV itself controls those buttons.": return "YouTube, Prime Video y Google Play: el propio TV controla esos botones.";
             case "These are the TCL remote's buttons: on this TV, the buttons work as they always did.": return "Estos son los botones del control de TCL: en este TV, los botones funcionan como siempre.";
             case "Picture": return "Imagen";
+            case "Refresh": return "Actualizar";
+            case "Refreshing…": return "Actualizando…";
+            case "Looking for news…": return "Buscando noticias…";
+            case "Already looking.": return "Ya estoy buscando.";
+            case "Couldn't refresh the news.": return "No pude actualizar las noticias.";
+            case "Nothing new for now.": return "Nada nuevo por ahora.";
+            case "New stories: ": return "Noticias nuevas: ";
             case "Watch": return "Ver";
             case "Tomorrow": return "Mañana";
             case "Popular": return "Popular";

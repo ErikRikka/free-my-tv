@@ -42,7 +42,8 @@ final class Live {
     private final Context context;
     private final Screen screen;
     private final BlockingQueue<byte[]> audio = new LinkedBlockingQueue<>();
-    private volatile boolean closed, interrupted, leaving, saidBye, micAsleep;
+    private volatile boolean closed, interrupted, leaving, saidBye, micAsleep, micOff, responding;
+    private volatile long lastSpoke;   // when its voice was last heard: the mic stays shut a moment after, for the room's echo
     private volatile long playUntil, lastHeard = System.currentTimeMillis();
     private SSLSocket socket;
     private OutputStream out;
@@ -96,6 +97,49 @@ final class Live {
         }
     }
 
+    /**
+     * The mic button, as on a walkie-talkie (the TV's own mic hears its speakers, so the mic is shut while it talks):
+     * while it speaks, it stops and listens; otherwise the mic goes off (it hears nothing of the room) or on again.
+     */
+    void button() {
+        try {
+            if (micAsleep) {
+                wake();
+            } else if (speaking() || !audio.isEmpty() || responding) {
+                log("live mic button: cut it off, listening");
+                cut();
+                if (responding) send(new JSONObject().put("type", "response.cancel"));
+                micOff = false;
+                screen.show("● Слушаю…", "", "");
+            } else if (micOff) {
+                micOff = false;
+                lastHeard = System.currentTimeMillis();
+                log("live mic on");
+                screen.show("● Слушаю…", "", "");
+            } else {
+                micOff = true;
+                send(new JSONObject().put("type", "input_audio_buffer.clear"));   // half a sentence isn't answered
+                log("live mic off");
+                screen.show("Микрофон выключен", "", "Нажми кнопку микрофона, чтобы говорить");
+            }
+        } catch (Exception e) {
+            log("live mic button " + e);
+        }
+    }
+
+    /** Stops its voice now; it's told where it was cut, so it knows you didn't hear the rest. */
+    private void cut() throws Exception {
+        if (speaking() && answerItem != null && answerHeardFrom > 0) {
+            log("live interrupted while speaking");
+            send(new JSONObject().put("type", "conversation.item.truncate").put("item_id", answerItem)
+                    .put("content_index", 0).put("audio_end_ms", Math.max(0, System.currentTimeMillis() - answerHeardFrom)));
+        }
+        interrupted = true;
+        audio.clear();
+        audio.add(FLUSH);
+        lastSpoke = 0;
+    }
+
     void close() {
         closed = true;
         SSLSocket s = socket;
@@ -138,6 +182,7 @@ final class Live {
     private void handle(JSONObject e) throws Exception {
         switch (e.optString("type")) {
             case "response.created":
+                responding = true;
                 interrupted = false;
                 answer = "";
                 break;
@@ -162,18 +207,9 @@ final class Live {
                 answer += e.optString("delta");
                 screen.show("", heard, answer);
                 break;
-            case "input_audio_buffer.speech_started":   // you started talking: it stops and listens
+            case "input_audio_buffer.speech_started":   // you started talking: it listens
                 lastHeard = System.currentTimeMillis();
-                if (speaking()) {
-                    log("live interrupted while speaking");
-                    if (answerItem != null && answerHeardFrom > 0) {   // so it knows you didn't hear the rest
-                        send(new JSONObject().put("type", "conversation.item.truncate").put("item_id", answerItem)
-                                .put("content_index", 0).put("audio_end_ms", Math.max(0, System.currentTimeMillis() - answerHeardFrom)));
-                    }
-                }
-                interrupted = true;
-                audio.clear();
-                audio.add(FLUSH);
+                if (speaking()) cut();
                 screen.show("● Слушаю…", "", "");
                 break;
             case "conversation.item.input_audio_transcription.completed":
@@ -206,7 +242,8 @@ final class Live {
                 }
                 break;
             }
-            case "response.done": {   // after the answer that follows an app opening, the panel goes
+            case "response.done": {
+                responding = false;   // after the answer that follows an app opening, the panel goes
                 JSONObject usage = e.optJSONObject("response") != null ? e.getJSONObject("response").optJSONObject("usage") : null;
                 if (usage != null) {
                     JSONObject in = usage.optJSONObject("input_token_details"), out = usage.optJSONObject("output_token_details");
@@ -447,7 +484,7 @@ final class Live {
             if (d != null) log("live mic is " + d.getProductName() + " (type " + d.getType() + ")");
             short[] in = new short[MIC_RATE / 10];   // 100 ms
             byte[] up = new byte[RATE / 10 * 2], quiet = new byte[up.length];
-            long lastSpoke = 0, levelAt = System.currentTimeMillis(), lastSound = levelAt;
+            long levelAt = System.currentTimeMillis(), lastSound = levelAt;
             double loudest = 0;
             while (!closed) {
                 int n = r.read(in, 0, in.length);
@@ -464,16 +501,14 @@ final class Live {
                     loudest = 0;
                     levelAt = System.currentTimeMillis();
                 }
-                boolean deaf;
-                if (echoCancel) deaf = false;
-                else if (Config.LIVE_MUTE_WHILE_SPEAKING) {   // muted while it speaks, and a moment after for the room's echo
-                    if (speaking() || !audio.isEmpty()) lastSpoke = now;
-                    deaf = now - lastSpoke < 400;
-                } else deaf = echo(in, n, now);
+                // Shut while it speaks and a moment after (the room's echo), unless the TV cancels its own echo; and while
+                // you've switched it off with the button.
+                if (!interrupted && (speaking() || !audio.isEmpty())) lastSpoke = now;
+                boolean deaf = micOff || !echoCancel && now - lastSpoke < 400;
                 ping();
                 send(new JSONObject().put("type", "input_audio_buffer.append")
                         .put("audio", Base64.encodeToString(deaf ? quiet : up, 0, frames * 2, Base64.NO_WRAP)));
-                if (!speaking() && audio.isEmpty() && System.currentTimeMillis() - lastHeard > 180_000) {
+                if (!speaking() && audio.isEmpty() && !micOff && System.currentTimeMillis() - lastHeard > 180_000) {
                     log("live, 3 quiet minutes");
                     close();
                 }
@@ -495,62 +530,6 @@ final class Live {
             if (t == android.media.AudioDeviceInfo.TYPE_USB_DEVICE || t == android.media.AudioDeviceInfo.TYPE_USB_HEADSET) return d;
         }
         return null;
-    }
-
-    // MARK: - Echo
-    // No echo canceller on this TV, so a gate: what it plays is known, so is how loud it comes back into the mic (learned
-    // as it talks). While it speaks, the mic goes through only when it's clearly louder than that echo (you talking),
-    // and stays open a moment so your words aren't cut; otherwise OpenAI hears silence and it doesn't interrupt itself.
-
-    private static final int FAR = 512;
-    private final long[] farAt = new long[FAR];
-    private final float[] farLevel = new float[FAR];
-    private int farNext;
-    private double echoGain;
-    private long gateOpenUntil;
-
-    /** Notes how loud each 20 ms of the answer is and when it will be heard. */
-    private void heard(byte[] pcm, int off, int len, long startsAt) {
-        int step = RATE / 50 * 2;
-        for (int i = off; i + 1 < off + len; i += step) {
-            int end = Math.min(off + len, i + step);
-            double e = 0;
-            int k = 0;
-            for (int j = i; j + 1 < end; j += 2, k++) {
-                int v = (short) ((pcm[j] & 0xFF) | (pcm[j + 1] << 8));
-                e += (double) v * v;
-            }
-            synchronized (farAt) {
-                farAt[farNext] = startsAt + (i - off) / 2 * 1000L / RATE;
-                farLevel[farNext] = (float) Math.sqrt(e / Math.max(1, k));
-                farNext = (farNext + 1) % FAR;
-            }
-        }
-    }
-
-    /** The loudest the TV was in the last half second, allowing for the delay through its speakers into the mic. */
-    private double farNow(long now) {
-        double max = 0;
-        synchronized (farAt) {
-            for (int i = 0; i < FAR; i++) if (farAt[i] > now - 500 && farAt[i] < now + 60) max = Math.max(max, farLevel[i]);
-        }
-        return max;
-    }
-
-    /** True when this block of the mic is only the TV's own voice and should be sent as silence. */
-    private boolean echo(short[] in, int n, long now) {
-        double e = 0;
-        for (int i = 0; i < n; i++) e += (double) in[i] * in[i];
-        double mic = Math.sqrt(e / Math.max(1, n)), far = farNow(now);
-        if (far < 150) return false;   // it isn't speaking: everything goes through
-        double r = mic / far;
-        if (echoGain == 0) echoGain = r;
-        else if (r < echoGain * 2) echoGain = Math.max(0.005, echoGain * 0.85 + r * 0.15);   // learns the echo, not your voice
-        if (r > echoGain * 3.2 && mic > 300) {
-            if (now > gateOpenUntil) log(String.format(java.util.Locale.ROOT, "live you over its voice: mic %.0f, %.1f× its echo", mic, r / echoGain));
-            gateOpenUntil = now + 700;
-        }
-        return now > gateOpenUntil;
     }
 
     /** 16 kHz to the 24 kHz the Realtime API takes (3 samples for every 2), into little-endian bytes; returns the frames. */
@@ -612,7 +591,6 @@ final class Live {
             if (n <= 0) break;
             long now = System.currentTimeMillis(), startsAt = Math.max(playUntil, now);
             if (answerHeardFrom == 0) answerHeardFrom = startsAt;
-            heard(pcm, off, n, startsAt);
             off += n;
             playUntil = startsAt + n / 2 * 1000L / RATE;
         }

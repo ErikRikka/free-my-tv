@@ -35,7 +35,7 @@ import java.util.function.Consumer;
 final class News {
     static final String SHELF_ID = "io.freemytv.news";
     private static final long EVERY = 3600_000L, ALL_READ = 20 * 60_000L, RETRY = 10 * 60_000L, DAY = 24 * 3600_000L;
-    private static final int BATCH = 60, MAX_KEPT = 80, PAGE_MAX = 2 * 1024 * 1024, STORE_VERSION = 5,
+    private static final int BATCH = 60, MAX_KEPT = 80, PAGE_MAX = 2 * 1024 * 1024, STORE_VERSION = 6,
             ARTICLE_MAX = 15_000, DETAILS_VERSION = 2;   // DETAILS_VERSION: a new way of retelling drops the old retellings
     private static final String UA = "Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36";
 
@@ -85,6 +85,30 @@ final class News {
         listeners.remove(l);
     }
 
+    /** The hero's "Refresh": collects now, whatever the clock says; false when a collection is already running. */
+    boolean refreshNow() {
+        if (!enabled() || busy) return false;
+        manual = true;   // asked for: the day's cap doesn't hold it back
+        lastAdded = -1;
+        failedAt = 0;
+        lastOk = 0;
+        refreshIfStale();
+        notifyListeners();   // the button shows it's at work
+        return true;
+    }
+
+    boolean busy() {
+        return busy;
+    }
+
+    /** How many stories the last collection added (-1: none finished since a "Refresh"; it failed, or still running). */
+    int lastAdded() {
+        return lastAdded;
+    }
+
+    private volatile boolean manual;
+    private volatile int lastAdded = -1;
+
     /** Collects again an hour after the last success, 20 min once all is read (10 min after a failure); on its own thread. */
     void refreshIfStale() {
         if (!enabled() || busy) return;
@@ -99,7 +123,9 @@ final class News {
                 failedAt = System.currentTimeMillis();
                 AppLog.w("news: " + t);
             } finally {
+                manual = false;
                 busy = false;
+                notifyListeners();
             }
         });
     }
@@ -273,11 +299,11 @@ final class News {
                 Integer n = addedOn.get(day(now));
                 today = n == null ? 0 : n;
             }
-            if (today >= NewsOrder.PER_DAY) break;
+            if (today >= NewsOrder.PER_DAY && !manual) break;
             List<NewsOrder.Story> picked;
             batches++;
             try {
-                picked = NewsOrder.capDaily(select(batch), today);
+                picked = NewsOrder.capDaily(select(batch), manual ? 0 : today);
                 okBatches++;
                 enrich(picked);
             } catch (Exception e) {
@@ -333,6 +359,7 @@ final class News {
             }
         }
         save();
+        lastAdded = ok ? added : -1;
         AppLog.w("news: " + items.size() + " records, " + fresh.size() + " new, " + added + " stories added, " + failed + " sources failed, "
                 + okBatches + "/" + batches + " batches, " + (ok ? "ok" : "retry in 10 min") + ", " + (System.currentTimeMillis() - t0) / 1000 + " s");
         notifyListeners();
@@ -377,7 +404,17 @@ final class News {
                         AppLog.w("news: page " + s.source + ": " + e.getMessage());
                     }
                 }
-                if (s.image != null && !reachable(s.image)) s.image = null;   // a site that won't hand its picture out: a photo instead
+                if (s.image != null && !sharpEnough(s.image)) {   // a site that won't hand its picture out, or only a small one
+                    String big = null;
+                    for (String b : NewsFeeds.biggerVersions(s.image)) {
+                        if (sharpEnough(b)) {
+                            big = b;
+                            break;
+                        }
+                    }
+                    if (big == null) AppLog.w("news: picture too small or unreachable, a photo instead: " + s.title);
+                    s.image = big;
+                }
                 s.more = NewsOrder.hasMore(s.summary, s.texts, s.link);
                 s.enriched = true;
                 if (s.image == null && !Config.UNSPLASH_KEY.trim().isEmpty() && s.bg != null && !s.bg.isEmpty()) {
@@ -444,20 +481,38 @@ final class News {
     }
 
     /** Whether a picture can be fetched at all (some sites answer 403 to anything but a browser on their own pages). */
-    private static boolean reachable(String url) {
+    private static final int MIN_W = 720, MIN_H = 400;
+
+    /**
+     * Whether the picture loads from here (some sites refuse it through the VPN) and is big enough for the screen:
+     * its size is read from its first half megabyte.
+     */
+    static boolean sharpEnough(String url) {
         try {
             HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
             c.setConnectTimeout(10000);
             c.setReadTimeout(10000);
             c.setRequestProperty("User-Agent", UA);
-            c.setRequestProperty("Range", "bytes=0-1023");
+            c.setRequestProperty("Range", "bytes=0-524287");
             try {
                 int code = c.getResponseCode();
-                return code == 200 || code == 206;
+                if (code != 200 && code != 206) return false;
+                byte[] head = new byte[512 * 1024];
+                int n = 0;
+                try (InputStream in = c.getInputStream()) {
+                    for (int r; n < head.length && (r = in.read(head, n, head.length - n)) > 0; ) n += r;
+                }
+                android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
+                o.inJustDecodeBounds = true;
+                android.graphics.BitmapFactory.decodeByteArray(head, 0, n, o);
+                boolean ok = o.outWidth >= MIN_W && o.outHeight >= MIN_H;
+                if (!ok) AppLog.w("news: picture " + o.outWidth + "×" + o.outHeight + " (HTTP " + code + ", " + n + " bytes) " + url);
+                return ok;
             } finally {
                 c.disconnect();
             }
         } catch (Exception e) {
+            AppLog.w("news: picture " + e.getMessage() + " " + url);
             return false;
         }
     }
@@ -766,7 +821,7 @@ final class News {
                     boolean oldRetell = o.optInt("detailsVersion") < DETAILS_VERSION;
                     s.details = j.has("details") && !oldRetell ? j.optString("details") : null;
                     s.more = j.optBoolean("more", true);
-                    s.enriched = j.optBoolean("enriched") && o.optInt("version") >= 5;   // looked up again with the picture check
+                    s.enriched = j.optBoolean("enriched") && o.optInt("version") >= 6;   // looked up again with the picture size check
                     s.triedPhoto = j.optBoolean("triedPhoto");
                     s.bg = j.optString("bg");
                     s.credit = j.optString("credit").isEmpty() ? null : j.optString("credit");

@@ -180,6 +180,15 @@ public final class NewsTests {
             check(NewsFeeds.article("<html><body>Просто текст без абзацев</body></html>").contains("Просто текст"), "falls back to plain");
             check(NewsFeeds.article(null).isEmpty(), "null");
         }));
+        run("biggerVersions", t(() -> {
+            List<String> m = NewsFeeds.biggerVersions("https://meduza.io/image/attachments/images/012/924/989/small/1lzHBH");
+            check(m.size() == 2 && m.get(0).endsWith("/original/1lzHBH") && m.get(1).endsWith("/large/1lzHBH"), "meduza " + m);
+            List<String> wp = NewsFeeds.biggerVersions("https://site.ru/wp-content/uploads/2026/10/photo-300x200.jpg");
+            check(wp.contains("https://site.ru/wp-content/uploads/2026/10/photo.jpg"), "wordpress " + wp);
+            List<String> q = NewsFeeds.biggerVersions("https://cdn.site.com/img.jpg?w=640&q=80");
+            check(q.contains("https://cdn.site.com/img.jpg?w=1600&q=80"), "width param " + q);
+            check(NewsFeeds.biggerVersions("https://cdn4.telesco.pe/file/abc.jpg").isEmpty(), "nothing to try");
+        }));
         run("readCappedStops", t(() -> {
             byte[] big = new byte[3 * 1024 * 1024];
             java.util.Arrays.fill(big, (byte) 'a');

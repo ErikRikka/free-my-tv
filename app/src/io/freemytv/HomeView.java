@@ -156,7 +156,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private String heroKey = "", heroTitleText = "", heroMetaText = "", heroPillText = "";
     private Recs.Pick heroPick;
     private String heroLanguage, heroPickMeta;
-    private final RectF topCapsule = new RectF(), panelRect = new RectF(), pillRect = new RectF();
+    private final RectF topCapsule = new RectF(), panelRect = new RectF(), pillRect = new RectF(), refreshRect = new RectF();
+    private boolean onRefresh;   // the news hero: "Refresh" focused, next to "Read"
+    private boolean waitingRefresh;   // a "Refresh" pressed: its result shown when it ends
     private final Spring[] topFocus = new Spring[TOP_COUNT];
     private final RectF[] topRects = new RectF[TOP_COUNT];
     private String feedKey;
@@ -637,6 +639,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** New stories, or one read: the count on the tile and, with the tile focused, the stories on top. */
     @Override public void onNews() {
+        News news = News.get(getContext());
+        if (waitingRefresh && !news.busy()) {   // the end of a "Refresh": what it found
+            waitingRefresh = false;
+            int n = news.lastAdded();
+            showToast(n < 0 ? Ui.tr("Não consegui atualizar as notícias.", "Couldn't refresh the news.")
+                    : n == 0 ? Ui.tr("Nada de novo por agora.", "Nothing new for now.")
+                    : Ui.tr("Notícias novas: ", "New stories: ") + n);
+        }
         syncFeed();
         if (News.SHELF_ID.equals(feedKey)) updateCards();
         tiles.invalidate();
@@ -2376,6 +2386,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             r = topRects[topIndex];
         } else if (zone == Z_CARDS) {
             Recs.Pick p = cardIndex < cards.size() ? cards.get(cardIndex) : null;
+            if (onRefresh && News.SHELF_ID.equals(feedKey)) {
+                click.open();
+                boolean started = News.get(getContext()).refreshNow();
+                if (started) waitingRefresh = true;
+                showToast(started ? Ui.tr("A procurar notícias…", "Looking for news…") : Ui.tr("Já estou a procurar.", "Already looking."));
+                heroDirty = true;
+                return;
+            }
             if (p == null || p.pkg == null) return;
             if ("news".equals(p.source)) {   // the story itself, in the news feed
                 click.open();
@@ -2906,6 +2924,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (!cards.isEmpty()) feedShown.put(String.valueOf(feedKey), Recs.key(cards.get(Math.min(cardIndex, cards.size() - 1))));
         feedKey = want;
         cardIndex = 0;
+        onRefresh = false;
         cards = new ArrayList<>();
         updateCards();
         String back = feedShown.get(String.valueOf(feedKey));
@@ -3043,8 +3062,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         if (!heroMetaText.isEmpty()) c.drawText(heroMetaText, x, H_META_BASE * k + dy, hMeta);
         // "Watch on Kinopoisk": glass; focused, white with dark text (← → switch picks, hold OK likes).
-        float f = 0;
-        for (Spring s : cardFocus) f = Math.max(f, Ui.clamp(s.value));
+        float focus = 0;
+        for (Spring s : cardFocus) focus = Math.max(focus, Ui.clamp(s.value));
+        boolean news = "news".equals(p.source) && News.SHELF_ID.equals(feedKey);
+        float f = news && onRefresh ? 0 : focus;
         float sym = 26 * k, gap = 12 * k, pad = 30 * k, pw = pad + sym + gap + hPill.measureText(heroPillText) + pad, ph = H_PILL_H * k;
         float sc = 1 + 0.06f * f;
         pillRect.set(x, H_PILL_TOP * k + dy, x + pw, H_PILL_TOP * k + dy + ph);
@@ -3070,6 +3091,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         c.drawText(heroPillText, pillRect.left + pad + sym + gap, mid, hPill);
         c.restore();
         hPill.setColor(WHITE);
+        if (news) drawRefresh(c, pillRect.right + 20 * k, pillRect.top, onRefresh ? focus : 0, mid - pillRect.centerY());
         if (heroPlot != null) {
             c.save();
             c.translate(x, H_PLOT_TOP * k + dy);
@@ -3078,6 +3100,35 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         drawPager(c, x, index, dy);
         if (!npText.isEmpty()) drawNowPlaying(c);
+    }
+
+    /** The news hero's second button, "Refresh" ("Refreshing…" while it collects), drawn as "Read" is. */
+    private void drawRefresh(Canvas c, float left, float top, float f, float midOffset) {
+        String label = News.get(getContext()).busy() ? Ui.tr("A atualizar…", "Refreshing…") : Ui.tr("Atualizar", "Refresh");
+        float sym = 26 * k, gap = 12 * k, pad = 30 * k, pw = pad + sym + gap + hPill.measureText(label) + pad, ph = H_PILL_H * k;
+        float sc = 1 + 0.06f * f;
+        refreshRect.set(left, top, left + pw, top + ph);
+        cell.set(refreshRect.left, refreshRect.centerY() - ph * sc / 2, refreshRect.left + pw * sc, refreshRect.centerY() + ph * sc / 2);
+        float rr = 18 * k;
+        tmp.set(cell);
+        tmp.offset(0, (6 + 8 * f) * k);
+        shadow.setColor(Ui.alpha(0xFF000000, 0.3f + 0.2f * f));
+        shadows.draw(c, tmp, rr, SHADOW_BLUR * k, shadow);
+        scene.liquid(c, cell, rr, SMOKE, 0.5f, 0.01f, 12 * k, 8 * k, 0.45f, 1 - f);
+        if (f > 0.01f) {
+            fill.setShader(null);
+            fill.setColor(Ui.alpha(0xFFFFFFFF, f));
+            c.drawRoundRect(cell, rr, rr, fill);
+        }
+        int ink = blend(WHITE, L_INK, f);
+        float mid = refreshRect.centerY() + midOffset;
+        c.save();
+        c.scale(sc, sc, cell.left, cell.centerY());
+        Symbols.draw(getContext(), c, "sync", refreshRect.left + pad + sym / 2, mid - pillX / 2, sym, ink);
+        hPill.setColor(ink);
+        c.drawText(label, refreshRect.left + pad + sym + gap, mid, hPill);
+        c.restore();
+        hPill.setColor(WHITE);
     }
 
     /** Where in the list: a window of up to 9 dots around the shown one, fading with distance. */
@@ -3282,10 +3333,16 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 }
                 break;
             case Z_CARDS:
-                if (dx != 0) {
+                // The news: Read, then Refresh, then the next story (← the other way).
+                if (dx != 0 && News.SHELF_ID.equals(feedKey) && (dx > 0) != onRefresh) {
+                    onRefresh = dx > 0;
+                    heroDirty = true;
+                } else if (dx != 0) {
                     int next = Math.max(0, Math.min(cards.size() - 1, cardIndex + dx));
                     if (next == cardIndex) return true;
                     cardIndex = next;
+                    onRefresh = false;
+                    heroDirty = true;
                     showCurrentPick();
                 } else if (dy < 0) {
                     zone = Z_TOP;

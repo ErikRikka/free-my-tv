@@ -80,6 +80,13 @@ final class Russian {
             case ", position ": return ", место ";
             case "Couldn't open ": return "Не удалось открыть ";
             case "Picture": return "Изображение";
+            case "Refresh": return "Обновить";
+            case "Refreshing…": return "Обновляю…";
+            case "Looking for news…": return "Ищу свежие новости…";
+            case "Already looking.": return "Уже ищу.";
+            case "Couldn't refresh the news.": return "Не получилось обновить новости.";
+            case "Nothing new for now.": return "Пока ничего нового.";
+            case "New stories: ": return "Новых новостей: ";
             case "Watch": return "Смотреть";
             case "Tomorrow": return "Завтра";
             case "Popular": return "Популярное";
