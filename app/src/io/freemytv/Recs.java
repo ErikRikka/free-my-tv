@@ -786,7 +786,9 @@ final class Recs {
             if (b == null) throw new IOException("unreadable image");
             AppLog.w("backdrop \u201c" + p.title + "\u201d: " + bounds.outWidth + "×" + bounds.outHeight);
             boolean forLight = light;
-            Backdrop backdrop = Backdrop.make(b, forLight, MEMES.equals(p.source));
+            // A meme, or a news picture too small to fill the screen (it would smear): whole, on a blurred copy of itself.
+            boolean whole = MEMES.equals(p.source) || "news".equals(p.source) && bounds.outWidth < 1100;
+            Backdrop backdrop = Backdrop.make(b, forLight, whole);
             if (forLight != light) return;   // the design changed midway: this one is stale
             synchronized (images) {
                 images.put(p.backdrop, backdrop);

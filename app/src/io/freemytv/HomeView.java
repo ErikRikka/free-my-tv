@@ -3333,7 +3333,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 }
                 break;
             case Z_CARDS:
-                // The news: Read, then Refresh, then the next story (← the other way).
+                // The news: → from Read goes to Refresh, which then stays focused while → goes through the stories;
+                // ← from Refresh goes back to Read, which then goes back through them.
                 if (dx != 0 && News.SHELF_ID.equals(feedKey) && (dx > 0) != onRefresh) {
                     onRefresh = dx > 0;
                     heroDirty = true;
@@ -3341,7 +3342,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     int next = Math.max(0, Math.min(cards.size() - 1, cardIndex + dx));
                     if (next == cardIndex) return true;
                     cardIndex = next;
-                    onRefresh = false;
                     heroDirty = true;
                     showCurrentPick();
                 } else if (dy < 0) {

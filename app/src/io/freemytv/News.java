@@ -35,7 +35,7 @@ import java.util.function.Consumer;
 final class News {
     static final String SHELF_ID = "io.freemytv.news";
     private static final long EVERY = 3600_000L, ALL_READ = 20 * 60_000L, RETRY = 10 * 60_000L, DAY = 24 * 3600_000L;
-    private static final int BATCH = 60, MAX_KEPT = 80, PAGE_MAX = 2 * 1024 * 1024, STORE_VERSION = 6,
+    private static final int BATCH = 60, MAX_KEPT = 80, PAGE_MAX = 2 * 1024 * 1024, STORE_VERSION = 7,
             ARTICLE_MAX = 15_000, DETAILS_VERSION = 2;   // DETAILS_VERSION: a new way of retelling drops the old retellings
     private static final String UA = "Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36";
 
@@ -404,7 +404,9 @@ final class News {
                         AppLog.w("news: page " + s.source + ": " + e.getMessage());
                     }
                 }
+                String small = null;   // kept if no photo can be had instead (Unsplash's hourly limit)
                 if (s.image != null && !sharpEnough(s.image)) {   // a site that won't hand its picture out, or only a small one
+                    small = s.image;
                     String big = null;
                     for (String b : NewsFeeds.biggerVersions(s.image)) {
                         if (sharpEnough(b)) {
@@ -425,6 +427,7 @@ final class News {
                         AppLog.w("news: unsplash: " + e.getMessage());
                     }
                 }
+                if (s.image == null && small != null && sharpEnoughToShow(small)) s.image = small;
             }));
         }
         long until = System.currentTimeMillis() + 60_000;
@@ -481,13 +484,26 @@ final class News {
     }
 
     /** Whether a picture can be fetched at all (some sites answer 403 to anything but a browser on their own pages). */
-    private static final int MIN_W = 720, MIN_H = 400;
+    private static final int MIN_W = 1100, MIN_H = 600;   // smaller, it smears across the screen (NewsActivity.SHARP)
+
+    /** A small picture still loads (it isn't one the site refuses): better than none when no photo can be had. */
+    private static boolean sharpEnoughToShow(String url) {
+        return size(url)[0] > 0;
+    }
 
     /**
      * Whether the picture loads from here (some sites refuse it through the VPN) and is big enough for the screen:
      * its size is read from its first half megabyte.
      */
     static boolean sharpEnough(String url) {
+        int[] wh = size(url);
+        boolean ok = wh[0] >= MIN_W && wh[1] >= MIN_H;
+        if (!ok) AppLog.w("news: picture " + wh[0] + "×" + wh[1] + " " + url);
+        return ok;
+    }
+
+    /** The picture's width and height, read from its first half megabyte; {-1, -1} when it doesn't load. */
+    private static int[] size(String url) {
         try {
             HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
             c.setConnectTimeout(10000);
@@ -496,7 +512,7 @@ final class News {
             c.setRequestProperty("Range", "bytes=0-524287");
             try {
                 int code = c.getResponseCode();
-                if (code != 200 && code != 206) return false;
+                if (code != 200 && code != 206) return new int[] {-1, -1};
                 byte[] head = new byte[512 * 1024];
                 int n = 0;
                 try (InputStream in = c.getInputStream()) {
@@ -505,15 +521,12 @@ final class News {
                 android.graphics.BitmapFactory.Options o = new android.graphics.BitmapFactory.Options();
                 o.inJustDecodeBounds = true;
                 android.graphics.BitmapFactory.decodeByteArray(head, 0, n, o);
-                boolean ok = o.outWidth >= MIN_W && o.outHeight >= MIN_H;
-                if (!ok) AppLog.w("news: picture " + o.outWidth + "×" + o.outHeight + " (HTTP " + code + ", " + n + " bytes) " + url);
-                return ok;
+                return new int[] {o.outWidth, o.outHeight};
             } finally {
                 c.disconnect();
             }
         } catch (Exception e) {
-            AppLog.w("news: picture " + e.getMessage() + " " + url);
-            return false;
+            return new int[] {-1, -1};
         }
     }
 
@@ -821,7 +834,7 @@ final class News {
                     boolean oldRetell = o.optInt("detailsVersion") < DETAILS_VERSION;
                     s.details = j.has("details") && !oldRetell ? j.optString("details") : null;
                     s.more = j.optBoolean("more", true);
-                    s.enriched = j.optBoolean("enriched") && o.optInt("version") >= 6;   // looked up again with the picture size check
+                    s.enriched = j.optBoolean("enriched") && o.optInt("version") >= 7;   // looked up again with the picture size check
                     s.triedPhoto = j.optBoolean("triedPhoto");
                     s.bg = j.optString("bg");
                     s.credit = j.optString("credit").isEmpty() ? null : j.optString("credit");
