@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 out=out/news-tests
 rm -rf "$out" && mkdir -p "$out"
 src=()
-for f in NewsFeeds NewsOrder NewsSources; do
+for f in NewsFeeds NewsOrder NewsSources EveningPicks; do
     [ -f "app/src/io/freemytv/$f.java" ] && src+=("app/src/io/freemytv/$f.java")
 done
 if ! javac -encoding UTF-8 -source 8 -target 8 -nowarn -Xlint:-options -d "$out" ${src[@]+"${src[@]}"} tools/news_tests/*.java; then

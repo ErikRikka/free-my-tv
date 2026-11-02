@@ -46,7 +46,7 @@ public final class NewsTests {
     public static void main(String[] args) throws Exception {
         dir = args[0];
         feeds();
-        for (String extra : new String[] {"io.freemytv.NewsOrderTests", "io.freemytv.NewsSourcesTests"}) {
+        for (String extra : new String[] {"io.freemytv.NewsOrderTests", "io.freemytv.NewsSourcesTests", "io.freemytv.EveningTests"}) {
             try {
                 Class.forName(extra).getDeclaredMethod("all").invoke(null);
             } catch (ClassNotFoundException ignored) {
