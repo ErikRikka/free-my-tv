@@ -644,6 +644,7 @@ public class SettingsActivity extends Activity {
             l.add("Ethereum");
             l.add("Solana");
             if (dollar()) l.add(Ui.tr("Dólar", "Dollar"));
+            l.add(Ui.tr("Sugestões para a noite", "Tonight's picks"));   // last: the coin rows keep their places
             return l.toArray(new String[0]);
         }
 
@@ -661,7 +662,8 @@ public class SettingsActivity extends Activity {
             v[CITY_ROW] = !cityStatus.isEmpty() ? cityStatus : Prefs.city().isEmpty() ? "—" : Prefs.city();
             v[5] = onOff(Prefs.quotes());
             // No quotes widget, nowhere to show prices: the coins read as off (and stay locked) until it is back on.
-            for (int i = COIN_ROWS; i < v.length; i++) v[i] = onOff(Prefs.quotes() && Prefs.coin(i - COIN_ROWS));
+            for (int i = COIN_ROWS; i < v.length - 1; i++) v[i] = onOff(Prefs.quotes() && Prefs.coin(i - COIN_ROWS));
+            v[v.length - 1] = onOff(Prefs.evening());
             return v;
         }
 
@@ -735,6 +737,10 @@ public class SettingsActivity extends Activity {
                 case CITY_ROW: return;
                 case 5: Prefs.setQuotes(!Prefs.quotes()); break;
                 default:
+                    if (focus == settingLabels().length - 1) {
+                        Prefs.setEvening(!Prefs.evening());
+                        break;
+                    }
                     if (!Prefs.quotes()) return;
                     Prefs.setCoin(focus - COIN_ROWS, !Prefs.coin(focus - COIN_ROWS));
                     break;

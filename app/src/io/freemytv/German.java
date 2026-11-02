@@ -184,6 +184,14 @@ final class German {
             case "Couldn't refresh the news.": return "Nachrichten konnten nicht aktualisiert werden.";
             case "Nothing new for now.": return "Gerade nichts Neues.";
             case "New stories: ": return "Neue Meldungen: ";
+            case "Tonight": return "Für heute Abend";
+            case "picked today at ": return "heute um ";
+            case "Cringe for tonight": return "Cringe für heute Abend";
+            case "All %d tips  ›": return "Alle %d Tipps  ›";
+            case "tip only": return "nur ein Tipp";
+            case "Only a tip: look for ": return "Nur ein Tipp: such nach ";
+            case "Couldn't open it.": return "Ließ sich nicht öffnen.";
+            case "Tonight's picks": return "Tipps für heute Abend";
             case "Watch": return "Ansehen";
             case "Tomorrow": return "Morgen";
             case "Popular": return "Beliebt";

@@ -87,6 +87,14 @@ final class Russian {
             case "Couldn't refresh the news.": return "Не получилось обновить новости.";
             case "Nothing new for now.": return "Пока ничего нового.";
             case "New stories: ": return "Новых новостей: ";
+            case "Tonight": return "На вечер";
+            case "picked today at ": return "собрано сегодня в ";
+            case "Cringe for tonight": return "Кринж на вечер";
+            case "All %d tips  ›": return "Все советы (%d)  ›";
+            case "tip only": return "только совет";
+            case "Only a tip: look for ": return "Это только совет, поищите ";
+            case "Couldn't open it.": return "Не получилось открыть.";
+            case "Tonight's picks": return "Подборка на вечер";
             case "Watch": return "Смотреть";
             case "Tomorrow": return "Завтра";
             case "Popular": return "Популярное";

@@ -62,7 +62,8 @@ import java.util.function.Consumer;
  * Measurements are in a 1920×1080 space (k = width / 1920). The screen is split into layers so the TV's weak GPU only
  * redraws what changed.
  */
-final class HomeView extends ViewGroup implements Choreographer.FrameCallback, HomeData.Listener, Recs.Listener, News.Listener, Spotify.Listener {
+final class HomeView extends ViewGroup implements Choreographer.FrameCallback, HomeData.Listener, Recs.Listener, News.Listener, Spotify.Listener,
+        Evening.Listener {
     // tvOS grid (Human Interface Guidelines): content inside the safe area, 80 px from the sides and 60 from top and
     // bottom; 40 px between items; 7 columns of 217 px (the apps). The shelf glass extends 36 px past the tiles (the
     // same padding on all four sides) and the tile corners are concentric with it (glass radius = radius + padding).
@@ -105,7 +106,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private static final String[] TABS_ES = {"Explorar", "Películas", "Series"};
     private static final String[] TABS_DE = {"Entdecken", "Filme", "Serien"};
     private static final String[] TAB_KIND = {null, "movie", "tv"};
-    private static final int Z_TOP = 4, Z_CARDS = 5;
+    private static final int Z_TOP = 4, Z_CARDS = 5, Z_EVENING = 6;
 
     private final Activity activity;
     private final Scene scene = new Scene();
@@ -274,6 +275,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private Spring[] drawerFocus = new Spring[0];
     private RectF[] drawerRects = new RectF[0];
     private final RectF weatherCard = new RectF(), quotesCard = new RectF();
+    // Tonight's picks, in the weather card's place: focus 0–3 posters, 4–6 the cringe shelf's rows, 7 "All N tips"
+    private final EveningShelf evening = new EveningShelf(() -> drawerDirty = true);
+    private int eveningIndex, listIndex;
+    private boolean eveningList;   // the whole cringe list over the drawer
+    private final RectF tmpEvening = new RectF(), tmpList = new RectF();
     private final Spring drawer = new Spring(0.46f, 0.92f, 0);
     private boolean drawerOpen;
     private int drawerIndex;
@@ -490,6 +496,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         data.addListener(this);
         recs.addListener(this);
         News.get(getContext()).addListener(this);
+        Evening.get(getContext()).addListener(this);
+        onEvening();
         data.refreshIfStale();
         recs.refreshIfStale();
         News.get(getContext()).refreshIfStale();
@@ -529,6 +537,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         data.removeListener(this);
         recs.removeListener(this);
         News.get(getContext()).removeListener(this);
+        Evening.get(getContext()).removeListener(this);
         if (tvInputs != null) tvInputs.unregisterCallback(inputCallback);
         if (spotify != null) spotify.stop();
         watchVpn(false);
@@ -637,6 +646,39 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     @Override public void onRecs() {
         wake();
         updatePicks();
+    }
+
+    /** Tonight's picks arrived (or the screen came back): the drawer shows them in the weather card's place. */
+    @Override public void onEvening() {
+        Evening e = Evening.get(getContext());
+        evening.setPicks(e.enabled() ? e.posters() : new ArrayList<>(), e.enabled() ? e.cringe() : new ArrayList<>(), e.builtAt());
+        if (!evening.visible() && zone == Z_EVENING) {
+            zone = Z_DRAWER;
+            eveningList = false;
+        }
+        layoutDrawer();
+    }
+
+    private boolean eveningShown() {
+        return evening.visible();
+    }
+
+    /** OK on a pick: its title in KINO.WATCH or YouTube; a tip that wasn't found anywhere only says so. */
+    private void playEvening(EveningPicks.Item p) {
+        if (p == null) return;
+        if (!p.playable()) {
+            showToast(Ui.tr("Só uma dica: procure ", "Only a tip: look for ") + "«" + p.title + "»");
+            return;
+        }
+        click.open();
+        String pkg = "kinowatch".equals(p.app) ? Recs.KINOWATCH : Recs.YOUTUBE;
+        try {
+            activity.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(p.link))
+                    .setPackage(pkg).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (RuntimeException e) {
+            AppLog.w("couldn't open " + p.link + ": " + e.getMessage());
+            showToast(Ui.tr("Não abriu.", "Couldn't open it."));
+        }
     }
 
     /** New stories, or one read: the count on the tile and, with the tile focused, the stories on top. */
@@ -823,7 +865,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         boolean topMoving = step(topFocus, dt), cardsMoving = step(cardFocus, dt);
         if (topMoving) status.invalidate();
         heroMoving |= topMoving | cardsMoving;
-        boolean drawerItemsMoving = step(drawerFocus, dt);
+        boolean drawerItemsMoving = step(drawerFocus, dt) | evening.step(dt);
         boolean gridMoving = step(gridFocus, dt) | scroll.step(dt);
         boolean drawerMoving = drawer.step(dt);
         boolean sheetMoving = sheet.step(dt);
@@ -1661,6 +1703,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         // A card that is off gives its room to the other one.
         weatherCard.set(left, cardsTop, qt ? split - 16 * k : right, cardsTop + CARDS_H * k);
         quotesCard.set(wx ? split + 16 * k : left, cardsTop, right, cardsTop + CARDS_H * k);
+        // Tonight's picks take both cards' place, a little taller (posters need the height); their list covers the drawer.
+        tmpEvening.set(left, cardsTop, right, cardsTop + 340 * k);
+        tmpList.set(left, (ROW_TOP - 6) * k, right, cardsTop + 340 * k);
+        evening.layout(tmpEvening, tmpList, k);
         drawerDirty = true;
     }
 
@@ -1675,6 +1721,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     private void closeDrawer() {
+        eveningList = false;
         drawerOpen = false;
         drawer.target = 0;
         zone = Z_SHELF;
@@ -1722,6 +1769,18 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         for (int i = 0; i < drawerItems.size(); i++) if (drawerFocus[i].value > 0.02f && (top < 0 || drawerFocus[i].value > drawerFocus[top].value)) top = i;
         for (int i = 0; i < drawerItems.size(); i++) if (i != top) drawDrawerTile(c, i);
         if (top >= 0) drawDrawerTile(c, top);
+        if (eveningShown()) {
+            drawerCard(c, evening.card);
+            evening.draw(c, drawerInk(0.95f), tone(L_DIM, 0xADFFFFFF), dark() > 0.5f);
+            if (eveningList) {
+                // Solid under the list: the posters and buttons must not show through its text.
+                fill.setShader(null);
+                fill.setColor(dark() > 0.5f ? 0xFF161618 : 0xFFF2F2F4);
+                c.drawRoundRect(evening.list, 30 * k, 30 * k, fill);
+                evening.drawList(c, drawerInk(0.95f), dark() > 0.5f);
+            }
+            return;
+        }
         if (Prefs.weather()) drawWeatherCard(c, weatherCard);
         if (Prefs.quotes() && HomeData.active().length > 0) drawQuotesCard(c, quotesCard);
     }
@@ -1917,6 +1976,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         boolean tilesChanged = aim(tileFocus, !sheetOpen && zone == Z_SHELF ? shelfIndex : -1, snap);
         boolean statusChanged = aim(statusFocus, !sheetOpen && zone == Z_STATUS ? statusIndex : -1, snap);
         boolean drawerChanged = aim(drawerFocus, !sheetOpen && zone == Z_DRAWER ? drawerIndex : -1, snap);
+        drawerChanged |= aim(evening.focus, !sheetOpen && zone == Z_EVENING && !eveningList ? eveningIndex : -1, snap);
+        drawerChanged |= aim(evening.listFocus, !sheetOpen && zone == Z_EVENING && eveningList ? listIndex : -1, snap);
         boolean heroChanged = heroFocus.target != (!sheetOpen && zone == Z_HERO ? 1 : 0);
         heroFocus.target = !sheetOpen && zone == Z_HERO ? 1 : 0;
         if (snap) heroFocus.snap(heroFocus.target);
@@ -2223,7 +2284,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private void back() {
         if (sheetOpen) {
             closeSheet();
-        } else if (zone == Z_DRAWER || zone == WIDGETS) {
+        } else if (zone == Z_EVENING && eveningList) {
+            eveningList = false;
+            retarget(false);
+        } else if (zone == Z_DRAWER || zone == WIDGETS || zone == Z_EVENING) {
             closeDrawer();
             retarget(false);
         } else if (zone != Z_SHELF) {
@@ -2233,6 +2297,50 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             return;
         }
         click.move();
+    }
+
+    /** Posters 0–3, then the shelf's rows 4–6 and "All" 7; in the open list, its rows. False when nothing moved. */
+    private boolean moveEvening(int dx, int dy) {
+        if (eveningList) {
+            int next = Math.max(0, Math.min(evening.listCount() - 1, listIndex + dy));
+            if (dx != 0 || next == listIndex) return false;
+            listIndex = next;
+            return true;
+        }
+        int posters = evening.posterCount(), rows = evening.rowCount(), last = evening.hasAll() ? 4 + 3 : 4 + rows - 1;
+        boolean onPoster = eveningIndex < 4;
+        if (onPoster) {
+            if (dy < 0) {
+                zone = Z_DRAWER;
+                return true;
+            }
+            if (dy > 0) return false;
+            int next = eveningIndex + dx;
+            if (next >= posters) {
+                if (rows == 0) return false;
+                eveningIndex = 4;
+                return true;
+            }
+            if (next < 0) return false;
+            eveningIndex = next;
+            return true;
+        }
+        if (dx < 0) {
+            if (posters == 0) return false;
+            eveningIndex = posters - 1;
+            return true;
+        }
+        if (dx > 0) return false;
+        int next = eveningIndex + dy;
+        if (eveningIndex == 4 + 3 && dy < 0) next = 4 + rows - 1;   // from "All" up to the last row
+        else if (dy > 0 && next > 4 + rows - 1) next = evening.hasAll() ? 4 + 3 : eveningIndex;
+        if (next < 4) {
+            zone = Z_DRAWER;
+            return true;
+        }
+        if (next > last || next == eveningIndex) return false;
+        eveningIndex = next;
+        return true;
     }
 
     private void move(int dx, int dy) {
@@ -2288,6 +2396,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     return;
                 }
                 break;
+            case Z_EVENING:
+                if (!moveEvening(dx, dy)) return;
+                break;
             case WIDGETS: {
                 List<Integer> on = widgets();
                 int at = on.indexOf(widgetIndex);
@@ -2307,6 +2418,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     drawerIndex = next;
                 } else if (dy < 0) {
                     closeDrawer();
+                } else if (eveningShown()) {
+                    zone = Z_EVENING;
+                    eveningList = false;
+                    eveningIndex = evening.posterCount() > 0 ? 0 : 4;
                 } else if (talkBack() && !widgets().isEmpty()) {
                     // Only with TalkBack: the widgets are there to be read, and this is how it gets to them.
                     zone = WIDGETS;
@@ -2362,6 +2477,19 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         HomeApps.Item it;
         RectF r;
         if (!sheetOpen && zone == WIDGETS) return;   // a widget is only read
+        if (!sheetOpen && zone == Z_EVENING) {
+            if (eveningList) {
+                playEvening(evening.listItem(listIndex));
+            } else if (eveningIndex == 4 + 3) {
+                click.open();
+                eveningList = true;
+                listIndex = 0;
+                retarget(false);
+            } else {
+                playEvening(evening.at(eveningIndex));
+            }
+            return;
+        }
         if (sheetOpen) {
             if (others.isEmpty()) return;
             it = others.get(gridIndex);

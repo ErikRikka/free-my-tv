@@ -128,6 +128,14 @@ final class Spanish {
             case "Couldn't refresh the news.": return "No pude actualizar las noticias.";
             case "Nothing new for now.": return "Nada nuevo por ahora.";
             case "New stories: ": return "Noticias nuevas: ";
+            case "Tonight": return "Para esta noche";
+            case "picked today at ": return "elegido hoy a las ";
+            case "Cringe for tonight": return "Cringe para esta noche";
+            case "All %d tips  ›": return "Los %d consejos  ›";
+            case "tip only": return "solo consejo";
+            case "Only a tip: look for ": return "Solo un consejo: busca ";
+            case "Couldn't open it.": return "No se pudo abrir.";
+            case "Tonight's picks": return "Sugerencias para esta noche";
             case "Watch": return "Ver";
             case "Tomorrow": return "Mañana";
             case "Popular": return "Popular";
