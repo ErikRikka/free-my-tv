@@ -115,6 +115,7 @@ final class Prefs {
     // MARK: - Widgets and coins
 
     static boolean weather() { return sp().getBoolean("weather", true); }
+    static boolean evening() { return sp().getBoolean("evening", true); }
     static void setWeather(boolean on) { put("weather", on); }
 
     static boolean quotes() { return sp().getBoolean("quotes", Config.SHOW_CRYPTO); }
